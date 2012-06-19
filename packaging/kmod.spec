@@ -14,6 +14,9 @@ BuildRequires:	pkgconfig(zlib)
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
+Provides:	module-init-tools = 4.0-1
+Obsoletes:	module-init-tools < 4.0-1
+
 %description
 kmod is a set of tools to handle common tasks with Linux kernel modules like
 insert, remove, list, check properties, resolve dependencies and aliases.
