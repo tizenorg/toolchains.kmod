@@ -66,6 +66,10 @@ do
 	done;
 done
 
+# license
+mkdir -p %{buildroot}/usr/share/license
+cp COPYING %{buildroot}/usr/share/license/%{name}
+
 %clean
 rm -rf $RPM_BUILD_ROOT
 
@@ -83,6 +87,7 @@ rm -rf $RPM_BUILD_ROOT
 /sbin/*
 %{_bindir}/kmod
 %{_libdir}/libkmod.so.*
+/usr/share/license/%{name}
 
 %files devel
 %manifest kmod.manifest
@@ -94,4 +99,3 @@ rm -rf $RPM_BUILD_ROOT
 %doc %{_mandir}/man?/*
 
 %changelog
-
