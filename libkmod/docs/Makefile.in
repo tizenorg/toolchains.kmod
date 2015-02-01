@@ -206,6 +206,7 @@ am__leading_dot = @am__leading_dot@
 am__quote = @am__quote@
 am__tar = @am__tar@
 am__untar = @am__untar@
+bashcompletiondir = @bashcompletiondir@
 bindir = @bindir@
 build = @build@
 build_alias = @build_alias@
@@ -263,7 +264,7 @@ MKHTML_OPTIONS = --path=$(abs_srcdir)/doc --path=$(abs_builddir)/doc
 HFILE_GLOB = $(top_srcdir)/libkmod/libkmod.h
 CFILE_GLOB = $(top_srcdir)/libkmod/libkmod.c $(top_srcdir)/libkmod/libkmod-module.c $(top_srcdir)/libkmod/libkmod-list.c
 IGNORE_HFILES = macro.h \
-		libkmod-private.h \
+		libkmod-internal.h \
 		libkmod-util.h \
 		libkmod-array.h \
 		libkmod-hash.h \
@@ -466,11 +467,11 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@ENABLE_GTK_DOC_FALSE@clean-local:
 @ENABLE_GTK_DOC_FALSE@uninstall-local:
-@ENABLE_GTK_DOC_FALSE@maintainer-clean-local:
 @ENABLE_GTK_DOC_FALSE@install-data-local:
 @ENABLE_GTK_DOC_FALSE@distclean-local:
+@ENABLE_GTK_DOC_FALSE@maintainer-clean-local:
+@ENABLE_GTK_DOC_FALSE@clean-local:
 clean: clean-am
 
 clean-am: clean-generic clean-libtool clean-local mostlyclean-am

@@ -31,7 +31,7 @@
 #include <dirent.h>
 
 #include "libkmod.h"
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 
 struct kmod_alias {
 	char *name;
@@ -518,7 +518,7 @@ static void kmod_config_free_softdep(struct kmod_config *config,
 static void kcmdline_parse_result(struct kmod_config *config, char *modname,
 						char *param, char *value)
 {
-	if (modname == NULL || param == NULL || value == NULL)
+	if (modname == NULL || param == NULL)
 		return;
 
 	DBG(config->ctx, "%s %s\n", modname, param);
@@ -833,7 +833,7 @@ static int conf_files_list(struct kmod_ctx *ctx, struct kmod_list **list,
 	if (S_ISREG(st.st_mode)) {
 		conf_files_insert_sorted(ctx, list, path, NULL);
 		return 0;
-	} if (!S_ISDIR(st.st_mode)) {
+	} else if (!S_ISDIR(st.st_mode)) {
 		ERR(ctx, "unsupported file mode %s: %#x\n",
 							path, st.st_mode);
 		return -EINVAL;

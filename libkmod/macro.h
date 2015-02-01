@@ -21,14 +21,8 @@
 
 #include <stddef.h>
 
-#if (4 < __GNUC__ || (__GNUC__ == 4 && 6 <= __GNUC_MINOR__))
 #define assert_cc(expr) \
 	_Static_assert((expr), #expr)
-#else
-#include <assert.h>
-#define assert_cc(expr) \
-	assert(expr)
-#endif
 
 #if HAVE_TYPEOF
 #define check_types_match(expr1, expr2)		\

@@ -28,7 +28,7 @@
 
 static __noreturn int modprobe_show_depends(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"--show-depends", "btusb",
@@ -50,7 +50,7 @@ static DEFINE_TEST(modprobe_show_depends,
 
 static __noreturn int modprobe_show_depends2(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"--show-depends", "psmouse",
@@ -73,7 +73,7 @@ static DEFINE_TEST(modprobe_show_depends2,
 
 static __noreturn int modprobe_show_alias_to_none(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"--show-depends", "--ignore-install", "--quiet", "psmouse",
@@ -96,7 +96,7 @@ static DEFINE_TEST(modprobe_show_alias_to_none,
 
 static __noreturn int modprobe_builtin(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"unix",
@@ -115,7 +115,7 @@ static DEFINE_TEST(modprobe_builtin,
 
 static __noreturn int modprobe_softdep_loop(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"bluetooth",
@@ -135,7 +135,7 @@ static DEFINE_TEST(modprobe_softdep_loop,
 
 static __noreturn int modprobe_install_cmd_loop(const struct test *t)
 {
-	const char *progname = ABS_TOP_BUILDDIR "/tools/test/modprobe";
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
 	const char *const args[] = {
 		progname,
 		"snd-pcm",
@@ -153,10 +153,32 @@ static DEFINE_TEST(modprobe_install_cmd_loop,
 		[TC_INIT_MODULE_RETCODES] = "",
 	},
 	.env_vars = (const struct keyval[]) {
-		{ "MODPROBE", ABS_TOP_BUILDDIR "/tools/test/modprobe" },
+		{ "MODPROBE", ABS_TOP_BUILDDIR "/tools/modprobe" },
 		{ }
 		},
 	);
+
+static __noreturn int modprobe_param_kcmdline(const struct test *t)
+{
+	const char *progname = ABS_TOP_BUILDDIR "/tools/modprobe";
+	const char *const args[] = {
+		progname,
+		"--show-depends", "psmouse",
+		NULL,
+	};
+
+	test_spawn_prog(progname, args);
+	exit(EXIT_FAILURE);
+}
+static DEFINE_TEST(modprobe_param_kcmdline,
+	.description = "check if params are parsed correctly from kcmdline",
+	.config = {
+		[TC_UNAME_R] = "4.4.4",
+		[TC_ROOTFS] = TESTSUITE_ROOTFS "test-modprobe/module-param-kcmdline",
+	},
+	.output = {
+		.stdout = TESTSUITE_ROOTFS "test-modprobe/module-param-kcmdline/correct.txt",
+	});
 
 
 static const struct test *tests[] = {
@@ -166,6 +188,7 @@ static const struct test *tests[] = {
 	&smodprobe_builtin,
 	&smodprobe_softdep_loop,
 	&smodprobe_install_cmd_loop,
+	&smodprobe_param_kcmdline,
 	NULL,
 };
 

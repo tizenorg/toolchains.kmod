@@ -40,11 +40,10 @@
 #include <unistd.h>
 
 /* kmod_elf_get_section() is not exported, we need the private header */
-#include <libkmod-private.h>
+#include <libkmod-internal.h>
 
 /* FIXME: hack, change name so we don't clash */
 #undef ERR
-#include "mkdir.h"
 #include "testsuite.h"
 #include "stripped-module.h"
 
@@ -156,7 +155,7 @@ static int create_sysfs_files(const char *modname)
 	strcpy(buf + len, modname);
 	len += strlen(modname);
 
-	assert(mkdir_p(buf, 0755) >= 0);
+	assert(mkdir_p(buf, len, 0755) >= 0);
 
 	strcpy(buf + len, "/initstate");
 	return write_one_line_file(buf, "live\n", strlen("live\n"));
