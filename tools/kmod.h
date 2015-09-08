@@ -1,7 +1,7 @@
 /*
  * kmod - one tool to rule them all
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,8 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _KMOD_MACRO_H_
-#define _KMOD_MACRO_H_
+#pragma once
 
 #include "macro.h"
 
@@ -36,4 +35,6 @@ extern const struct kmod_cmd kmod_cmd_compat_modprobe;
 extern const struct kmod_cmd kmod_cmd_compat_depmod;
 
 extern const struct kmod_cmd kmod_cmd_list;
-#endif
+extern const struct kmod_cmd kmod_cmd_static_nodes;
+
+#include "log.h"

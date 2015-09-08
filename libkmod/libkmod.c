@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -32,12 +33,12 @@
 #include <sys/stat.h>
 
 #include "libkmod.h"
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 #include "libkmod-index.h"
 
 #define KMOD_HASH_SIZE (256)
 #define KMOD_LRU_MAX (128)
-#define _KMOD_INDEX_MODULES_SIZE KMOD_INDEX_MODULES_SYMBOL + 1
+#define _KMOD_INDEX_MODULES_SIZE KMOD_INDEX_MODULES_BUILTIN + 1
 
 /**
  * SECTION:libkmod
@@ -54,12 +55,13 @@ static struct _index_files {
 	[KMOD_INDEX_MODULES_DEP] = { .fn = "modules.dep", .prefix = "" },
 	[KMOD_INDEX_MODULES_ALIAS] = { .fn = "modules.alias", .prefix = "alias " },
 	[KMOD_INDEX_MODULES_SYMBOL] = { .fn = "modules.symbols", .prefix = "alias "},
+	[KMOD_INDEX_MODULES_BUILTIN] = { .fn = "modules.builtin", .prefix = ""},
 };
 
 static const char *default_config_paths[] = {
-	"/run/modprobe.d",
 	SYSCONFDIR "/modprobe.d",
-	ROOTPREFIX "/lib/modprobe.d",
+	"/run/modprobe.d",
+	"/lib/modprobe.d",
 	NULL
 };
 
@@ -97,6 +99,7 @@ void kmod_log(const struct kmod_ctx *ctx,
 	va_end(args);
 }
 
+_printf_format_(6, 0)
 static void log_filep(void *data,
 			int priority, const char *file, int line,
 			const char *fn, const char *format, va_list args)
@@ -193,7 +196,7 @@ static int log_priority(const char *priority)
 	return 0;
 }
 
-static const char *dirname_default_prefix = ROOTPREFIX "/lib/modules";
+static const char *dirname_default_prefix = "/lib/modules";
 
 static char *get_kernel_release(const char *dirname)
 {
@@ -215,16 +218,15 @@ static char *get_kernel_release(const char *dirname)
 /**
  * kmod_new:
  * @dirname: what to consider as linux module's directory, if NULL
- *           defaults to $rootprefix/lib/modules/`uname -r`. If it's relative,
- *           it's treated as relative to current the current working
- *           directory. Otherwise, give an absolute dirname.
+ *           defaults to /lib/modules/`uname -r`. If it's relative,
+ *           it's treated as relative to the current working directory.
+ *           Otherwise, give an absolute dirname.
  * @config_paths: ordered array of paths (directories or files) where
  *                to load from user-defined configuration parameters such as
  *                alias, blacklists, commands (install, remove). If
  *                NULL defaults to /run/modprobe.d, /etc/modprobe.d and
- *                $rootprefix/lib/modprobe.d. Give an empty vector if
- *                configuration should not be read. This array must be null
- *                terminated.
+ *                /lib/modprobe.d. Give an empty vector if configuration should
+ *                not be read. This array must be null terminated.
  *
  * Create kmod library context. This reads the kmod configuration
  * and fills in the default values.
@@ -253,7 +255,7 @@ KMOD_EXPORT struct kmod_ctx *kmod_new(const char *dirname,
 	ctx->dirname = get_kernel_release(dirname);
 
 	/* environment overwrites config */
-	env = getenv("KMOD_LOG");
+	env = secure_getenv("KMOD_LOG");
 	if (env != NULL)
 		kmod_set_log_priority(ctx, log_priority(env));
 
@@ -305,6 +307,8 @@ KMOD_EXPORT struct kmod_ctx *kmod_ref(struct kmod_ctx *ctx)
  *
  * Drop a reference of the kmod library context. If the refcount
  * reaches zero, the resources of the context will be released.
+ *
+ * Returns: the passed kmod library context or NULL if it's freed
  */
 KMOD_EXPORT struct kmod_ctx *kmod_unref(struct kmod_ctx *ctx)
 {
@@ -476,6 +480,59 @@ int kmod_lookup_alias_from_aliases_file(struct kmod_ctx *ctx, const char *name,
 								name, list);
 }
 
+int kmod_lookup_alias_from_builtin_file(struct kmod_ctx *ctx, const char *name,
+						struct kmod_list **list)
+{
+	char *line = NULL;
+	int err = 0;
+
+	assert(*list == NULL);
+
+	if (ctx->indexes[KMOD_INDEX_MODULES_BUILTIN]) {
+		DBG(ctx, "use mmaped index '%s' modname=%s\n",
+				index_files[KMOD_INDEX_MODULES_BUILTIN].fn,
+				name);
+		line = index_mm_search(ctx->indexes[KMOD_INDEX_MODULES_BUILTIN],
+									name);
+	} else {
+		struct index_file *idx;
+		char fn[PATH_MAX];
+
+		snprintf(fn, sizeof(fn), "%s/%s.bin", ctx->dirname,
+				index_files[KMOD_INDEX_MODULES_BUILTIN].fn);
+		DBG(ctx, "file=%s modname=%s\n", fn, name);
+
+		idx = index_file_open(fn);
+		if (idx == NULL) {
+			DBG(ctx, "could not open builtin file '%s'\n", fn);
+			goto finish;
+		}
+
+		line = index_search(idx, name);
+		index_file_close(idx);
+	}
+
+	if (line != NULL) {
+		struct kmod_module *mod;
+
+		err = kmod_module_new_from_name(ctx, name, &mod);
+		if (err < 0) {
+			ERR(ctx, "Could not create module from name %s: %s\n",
+							name, strerror(-err));
+			goto finish;
+		}
+
+		kmod_module_set_builtin(mod, true);
+		*list = kmod_list_append(*list, mod);
+		if (*list == NULL)
+			err = -ENOMEM;
+	}
+
+finish:
+	free(line);
+	return err;
+}
+
 char *kmod_search_moddep(struct kmod_ctx *ctx, const char *name)
 {
 	struct index_file *idx;
@@ -496,7 +553,7 @@ char *kmod_search_moddep(struct kmod_ctx *ctx, const char *name)
 
 	idx = index_file_open(fn);
 	if (idx == NULL) {
-		ERR(ctx, "could not open moddep file '%s'\n", fn);
+		DBG(ctx, "could not open moddep file '%s'\n", fn);
 		return NULL;
 	}
 
@@ -752,7 +809,7 @@ KMOD_EXPORT int kmod_load_resources(struct kmod_ctx *ctx)
 
 		snprintf(path, sizeof(path), "%s/%s.bin", ctx->dirname,
 							index_files[i].fn);
-		ctx->indexes[i] = index_mm_open(ctx, path, true,
+		ctx->indexes[i] = index_mm_open(ctx, path,
 						&ctx->indexes_stamp[i]);
 		if (ctx->indexes[i] == NULL)
 			goto fail;
@@ -799,7 +856,11 @@ KMOD_EXPORT void kmod_unload_resources(struct kmod_ctx *ctx)
 /**
  * kmod_dump_index:
  * @ctx: kmod library context
- * @type: index to dump
+ * @type: index to dump, valid indexes are
+ * KMOD_INDEX_MODULES_DEP: index of module dependencies;
+ * KMOD_INDEX_MODULES_ALIAS: index of module aliases;
+ * KMOD_INDEX_MODULES_SYMBOL: index of symbol aliases;
+ * KMOD_INDEX_MODULES_BUILTIN: index of builtin module.
  * @fd: file descriptor to dump index to
  *
  * Dump index to file descriptor. Note that this function doesn't use stdio.h
@@ -841,32 +902,7 @@ KMOD_EXPORT int kmod_dump_index(struct kmod_ctx *ctx, enum kmod_index type,
 	return 0;
 }
 
-const struct kmod_list *kmod_get_blacklists(const struct kmod_ctx *ctx)
+const struct kmod_config *kmod_get_config(const struct kmod_ctx *ctx)
 {
-	return ctx->config->blacklists;
-}
-
-const struct kmod_list *kmod_get_options(const struct kmod_ctx *ctx)
-{
-	return ctx->config->options;
-}
-
-const struct kmod_list *kmod_get_install_commands(const struct kmod_ctx *ctx)
-{
-	return ctx->config->install_commands;
-}
-
-const struct kmod_list *kmod_get_remove_commands(const struct kmod_ctx *ctx)
-{
-	return ctx->config->remove_commands;
-}
-
-const struct kmod_list *kmod_get_softdeps(const struct kmod_ctx *ctx)
-{
-	return ctx->config->softdeps;
-}
-
-const struct kmod_list *kmod_get_aliases(const struct kmod_ctx *ctx)
-{
-	return ctx->config->aliases;
+	return ctx->config;
 }

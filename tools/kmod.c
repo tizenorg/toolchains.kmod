@@ -1,7 +1,7 @@
 /*
  * kmod - one tool to rule them all
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ static const struct kmod_cmd kmod_cmd_help;
 static const struct kmod_cmd *kmod_cmds[] = {
 	&kmod_cmd_help,
 	&kmod_cmd_list,
+	&kmod_cmd_static_nodes,
 };
 
 static const struct kmod_cmd *kmod_compat_cmds[] = {
@@ -157,10 +158,9 @@ static int handle_kmod_compat_commands(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-	const char *binname = basename(argv[0]);
 	int err;
 
-	if (strcmp(binname, "kmod") == 0)
+	if (strcmp(program_invocation_short_name, "kmod") == 0)
 		err = handle_kmod_commands(argc, argv);
 	else
 		err = handle_kmod_compat_commands(argc, argv);

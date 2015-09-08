@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,7 +25,7 @@
 #include <errno.h>
 
 #include "libkmod.h"
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 
 enum kmod_elf_class {
 	KMOD_ELF_32 = (1 << 1),
@@ -243,12 +243,12 @@ static inline int elf_get_section_info(const struct kmod_elf *elf, uint16_t idx,
 	elf_get_uint(elf, off + offsetof(typeof(*hdr), field), sizeof(hdr->field))
 
 	if (elf->class & KMOD_ELF_32) {
-		const Elf32_Shdr *hdr = (const Elf32_Shdr *)p;
+		const Elf32_Shdr *hdr _unused_ = (const Elf32_Shdr *)p;
 		*size = READV(sh_size);
 		*offset = READV(sh_offset);
 		*nameoff = READV(sh_name);
 	} else {
-		const Elf64_Shdr *hdr = (const Elf64_Shdr *)p;
+		const Elf64_Shdr *hdr _unused_ = (const Elf64_Shdr *)p;
 		*size = READV(sh_size);
 		*offset = READV(sh_offset);
 		*nameoff = READV(sh_name);
@@ -280,10 +280,10 @@ struct kmod_elf *kmod_elf_new(const void *memory, off_t size)
 	size_t hdr_size, shdr_size, min_size;
 	int class;
 
-	assert(sizeof(uint16_t) == sizeof(Elf32_Half));
-	assert(sizeof(uint16_t) == sizeof(Elf64_Half));
-	assert(sizeof(uint32_t) == sizeof(Elf32_Word));
-	assert(sizeof(uint32_t) == sizeof(Elf64_Word));
+	assert_cc(sizeof(uint16_t) == sizeof(Elf32_Half));
+	assert_cc(sizeof(uint16_t) == sizeof(Elf64_Half));
+	assert_cc(sizeof(uint32_t) == sizeof(Elf32_Word));
+	assert_cc(sizeof(uint32_t) == sizeof(Elf64_Word));
 
 	class = elf_identify(memory, size);
 	if (class < 0) {
@@ -311,12 +311,12 @@ struct kmod_elf *kmod_elf_new(const void *memory, off_t size)
 	elf->header.strings.section = READV(e_shstrndx);	\
 	elf->header.machine = READV(e_machine)
 	if (elf->class & KMOD_ELF_32) {
-		const Elf32_Ehdr *hdr = elf_get_mem(elf, 0);
+		const Elf32_Ehdr *hdr _unused_ = elf_get_mem(elf, 0);
 		LOAD_HEADER;
 		hdr_size = sizeof(Elf32_Ehdr);
 		shdr_size = sizeof(Elf32_Shdr);
 	} else {
-		const Elf64_Ehdr *hdr = elf_get_mem(elf, 0);
+		const Elf64_Ehdr *hdr _unused_ = elf_get_mem(elf, 0);
 		LOAD_HEADER;
 		hdr_size = sizeof(Elf64_Ehdr);
 		shdr_size = sizeof(Elf64_Shdr);
@@ -373,6 +373,31 @@ void kmod_elf_unref(struct kmod_elf *elf)
 const void *kmod_elf_get_memory(const struct kmod_elf *elf)
 {
 	return elf->memory;
+}
+
+static int elf_find_section(const struct kmod_elf *elf, const char *section)
+{
+	uint64_t nameslen;
+	const char *names = elf_get_strings_section(elf, &nameslen);
+	uint16_t i;
+
+	for (i = 1; i < elf->header.section.count; i++) {
+		uint64_t off, size;
+		uint32_t nameoff;
+		const char *n;
+		int err = elf_get_section_info(elf, i, &off, &size, &nameoff);
+		if (err < 0)
+			continue;
+		if (nameoff >= nameslen)
+			continue;
+		n = names + nameoff;
+		if (!streq(section, n))
+			continue;
+
+		return i;
+	}
+
+	return -ENOENT;
 }
 
 int kmod_elf_get_section(const struct kmod_elf *elf, const char *section, const void **buf, uint64_t *buf_size)
@@ -488,7 +513,7 @@ int kmod_elf_get_modversions(const struct kmod_elf *elf, struct kmod_modversion 
 	int i, count, err;
 #define MODVERSION_SEC_SIZE (sizeof(struct kmod_modversion64))
 
-	assert(sizeof(struct kmod_modversion64) ==
+	assert_cc(sizeof(struct kmod_modversion64) ==
 					sizeof(struct kmod_modversion32));
 
 	if (elf->class == KMOD_ELF_32)
@@ -550,26 +575,29 @@ int kmod_elf_get_modversions(const struct kmod_elf *elf, struct kmod_modversion 
 
 int kmod_elf_strip_section(struct kmod_elf *elf, const char *section)
 {
-	uint64_t size, off;
+	uint64_t off, size;
 	const void *buf;
-	int err = kmod_elf_get_section(elf, section, &buf, &size);
-	if (err < 0)
-		return err;
+	int idx = elf_find_section(elf, section);
+	uint64_t val;
 
+	if (idx < 0)
+		return idx;
+
+	buf = elf_get_section_header(elf, idx);
 	off = (const uint8_t *)buf - elf->memory;
 
-#define WRITEV(field, value)			\
-	elf_set_uint(elf, off + offsetof(typeof(*hdr), field), sizeof(hdr->field), value)
 	if (elf->class & KMOD_ELF_32) {
-		const Elf32_Shdr *hdr = buf;
-		uint32_t val = ~(uint32_t)SHF_ALLOC;
-		return WRITEV(sh_flags, val);
+		off += offsetof(Elf32_Shdr, sh_flags);
+		size = sizeof(((Elf32_Shdr *)buf)->sh_flags);
 	} else {
-		const Elf64_Shdr *hdr = buf;
-		uint64_t val = ~(uint64_t)SHF_ALLOC;
-		return WRITEV(sh_flags, val);
+		off += offsetof(Elf64_Shdr, sh_flags);
+		size = sizeof(((Elf64_Shdr *)buf)->sh_flags);
 	}
-#undef WRITEV
+
+	val = elf_get_uint(elf, off, size);
+	val &= ~(uint64_t)SHF_ALLOC;
+
+	return elf_set_uint(elf, off, size, val);
 }
 
 int kmod_elf_strip_vermagic(struct kmod_elf *elf)
@@ -611,7 +639,6 @@ int kmod_elf_strip_vermagic(struct kmod_elf *elf)
 			i += strlen(s);
 			continue;
 		}
-		s += len;
 		off = (const uint8_t *)s - elf->memory;
 
 		if (elf->changed == NULL) {
@@ -705,7 +732,6 @@ static int kmod_elf_get_symbols_symtab(const struct kmod_elf *elf, struct kmod_m
 		a[count].symbol = itr;
 		memcpy(itr, strings + last, slen);
 		itr[slen] = '\0';
-		itr += slen + 1;
 		count++;
 	}
 

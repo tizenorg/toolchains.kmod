@@ -1,22 +1,22 @@
 /*
- * Copyright (C) 2012  ProFUSION embedded systems
+ * Copyright (C) 2012-2013  ProFUSION embedded systems
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef _LIBKMOD_TESTSUITE_
-#define _LIBKMOD_TESTSUITE_
+#pragma once
 
 #include <stdbool.h>
 #include <stdarg.h>
@@ -72,16 +72,31 @@ enum test_config {
 #define S_TC_INIT_MODULE_RETCODES "TESTSUITE_INIT_MODULE_RETCODES"
 #define S_TC_DELETE_MODULE_RETCODES "TESTSUITE_DELETE_MODULE_RETCODES"
 
+struct keyval {
+	const char *key;
+	const char *val;
+};
 
 struct test {
 	const char *name;
 	const char *description;
 	struct {
+		/* File with correct stdout */
 		const char *stdout;
+		/* File with correct stderr */
 		const char *stderr;
+
+		/*
+		 * Vector with pair of files
+		 * key = correct file
+		 * val = file to check
+		 */
+		const struct keyval *files;
 	} output;
 	testfunc func;
 	const char *config[_TC_LAST];
+	const char *path;
+	const struct keyval *env_vars;
 	bool need_spawn;
 	bool expected_fail;
 };
@@ -101,10 +116,40 @@ int test_run(const struct test *t);
 #define ERR(fmt, ...) _LOG("ERR: ", fmt, ## __VA_ARGS__)
 
 /* Test definitions */
-#define DEFINE_TEST(_name) \
-	struct test s_name = { \
+#define DEFINE_TEST(_name, ...) \
+	const struct test s##_name = { \
 		.name = #_name, \
 		.func = _name, \
+		## __VA_ARGS__ \
 	}
 
-#endif
+#define TESTSUITE_MAIN(_tests) \
+	int main(int argc, char *argv[])			\
+	{							\
+		const struct test *t;				\
+		int arg;					\
+		size_t i;					\
+								\
+		arg = test_init(argc, argv, tests);		\
+		if (arg == 0)					\
+			return 0;				\
+								\
+		if (arg < argc) {				\
+			t = test_find(tests, argv[arg]);	\
+			if (t == NULL) {			\
+				fprintf(stderr, "could not find test %s\n", argv[arg]);\
+				exit(EXIT_FAILURE);		\
+			}					\
+								\
+			return test_run(t);			\
+		}						\
+								\
+		for (i = 0; tests[i] != NULL; i++) {		\
+			if (test_run(tests[i]) != 0)		\
+				exit(EXIT_FAILURE);		\
+		}						\
+								\
+		exit(EXIT_SUCCESS);				\
+	}							\
+
+#define __noreturn __attribute__((noreturn))

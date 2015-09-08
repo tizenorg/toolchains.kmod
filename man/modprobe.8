@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: modprobe
 .\"    Author: Jon Masters <jcm@jonmasters.org>
-.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 02/06/2012
+.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
+.\"      Date: 08/22/2013
 .\"    Manual: modprobe
 .\"    Source: kmod
 .\"  Language: English
 .\"
-.TH "MODPROBE" "8" "02/06/2012" "kmod" "modprobe"
+.TH "MODPROBE" "8" "08/22/2013" "kmod" "modprobe"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -40,27 +40,23 @@ modprobe \- Add and remove modules from the Linux Kernel
 \fBmodprobe\fR [\-\-dump\-modversions] [\fIfilename\fR]
 .SH "DESCRIPTION"
 .PP
-
 \fBmodprobe\fR
 intelligently adds or removes a module from the Linux kernel: note that for convenience, there is no difference between _ and \- in module names (automatic underscore conversion is performed)\&.
 \fBmodprobe\fR
 looks in the module directory
 /lib/modules/`uname \-r`
-for all the modules and other files, except for the optional
-/etc/modprobe\&.conf
-configuration file and
+for all the modules and other files, except for the optional configuration files in the
 /etc/modprobe\&.d
 directory (see
-\fBmodprobe.conf\fR(5))\&.
+\fBmodprobe.d\fR(5))\&.
 \fBmodprobe\fR
-will also use module options specified on the kernel command line in the form of <module>\&.<option>\&.
+will also use module options specified on the kernel command line in the form of <module>\&.<option> and blacklists in the form of modprobe\&.blacklist=<module>\&.
 .PP
 Note that unlike in 2\&.4 series Linux kernels (which are not supported by this tool) this version of
 \fBmodprobe\fR
 does not do anything to the module itself: the work of resolving symbols and understanding parameters is done inside the kernel\&. So module failure is sometimes accompanied by a kernel message: see
 \fBdmesg\fR(8)\&.
 .PP
-
 \fBmodprobe\fR
 expects an up\-to\-date
 modules\&.dep\&.bin
@@ -79,12 +75,12 @@ If any arguments are given after the
 \fImodulename\fR, they are passed to the kernel (in addition to any options listed in the configuration file)\&.
 .SH "OPTIONS"
 .PP
-\fB\-a\fR \fB\-\-all\fR
+\fB\-a\fR, \fB\-\-all\fR
 .RS 4
 Insert all module names on the command line\&.
 .RE
 .PP
-\fB\-b\fR \fB\-\-use\-blacklist\fR
+\fB\-b\fR, \fB\-\-use\-blacklist\fR
 .RS 4
 This option causes
 \fBmodprobe\fR
@@ -94,7 +90,7 @@ commands in the configuration files (if any) to module names as well\&. It is us
 \fBudev\fR(7)\&.
 .RE
 .PP
-\fB\-C\fR \fB\-\-config\fR
+\fB\-C\fR, \fB\-\-config\fR
 .RS 4
 This option overrides the default configuration directory (/etc/modprobe\&.d)\&.
 .sp
@@ -107,7 +103,7 @@ commands to other
 commands in the MODPROBE_OPTIONS environment variable\&.
 .RE
 .PP
-\fB\-c\fR \fB\-\-showconfig\fR
+\fB\-c\fR, \fB\-\-showconfig\fR
 .RS 4
 Dump out the effective configuration from the config directory and exit\&.
 .RE
@@ -117,10 +113,10 @@ Dump out the effective configuration from the config directory and exit\&.
 Print out a list of module versioning information required by a module\&. This option is commonly used by distributions in order to package up a Linux kernel module using module versioning deps\&.
 .RE
 .PP
-\fB\-d\fR \fB\-\-dirname\fR
+\fB\-d\fR, \fB\-\-dirname\fR
 .RS 4
-Directory where modules can be found,
-/lib/modules/\fIRELEASE\fR
+Root directory for modules,
+/
 by default\&.
 .RE
 .PP
@@ -147,7 +143,7 @@ When modules are compiled with CONFIG_MODVERSIONS set, a section detailing the v
 This applies any modules inserted: both the module (or alias) on the command line and any modules on which it depends\&.
 .RE
 .PP
-\fB\-f\fR \fB\-\-force\fR
+\fB\-f\fR, \fB\-\-force\fR
 .RS 4
 Try to strip any versioning information from the module which might otherwise stop it from loading: this is the same as using both
 \fB\-\-force\-vermagic\fR
@@ -157,7 +153,7 @@ and
 This applies to any modules inserted: both the module (or alias) on the command line and any modules it on which it depends\&.
 .RE
 .PP
-\fB\-i\fR \fB\-\-ignore\-install\fR \fB\-\-ignore\-remove\fR
+\fB\-i\fR, \fB\-\-ignore\-install\fR, \fB\-\-ignore\-remove\fR
 .RS 4
 This option causes
 \fBmodprobe\fR
@@ -176,7 +172,7 @@ or
 \fBmodprobe.d\fR(5)\&.
 .RE
 .PP
-\fB\-n\fR \fB\-\-dry\-run\fR \fB\-\-show\fR
+\fB\-n\fR, \fB\-\-dry\-run\fR, \fB\-\-show\fR
 .RS 4
 This option does everything but actually insert or delete the modules (or run the install or remove commands)\&. Combined with
 \fB\-v\fR, it is useful for debugging problems\&. For historical reasons both
@@ -186,7 +182,7 @@ and
 actually mean the same thing and are interchangeable\&.
 .RE
 .PP
-\fB\-q\fR \fB\-\-quiet\fR
+\fB\-q\fR, \fB\-\-quiet\fR
 .RS 4
 With this flag,
 \fBmodprobe\fR
@@ -195,12 +191,12 @@ won\*(Aqt print an error message if you try to remove or insert a module it can\
 command)\&. However, it will still return with a non\-zero exit status\&. The kernel uses this to opportunistically probe for modules which might exist using request_module\&.
 .RE
 .PP
-\fB\-R\fR \fB\-\-resolve\-alias\fR
+\fB\-R\fR, \fB\-\-resolve\-alias\fR
 .RS 4
 Print all module names matching an alias\&. This can be useful for debugging module alias problems\&.
 .RE
 .PP
-\fB\-r\fR \fB\-\-remove\fR
+\fB\-r\fR, \fB\-\-remove\fR
 .RS 4
 This option causes
 \fBmodprobe\fR
@@ -211,7 +207,7 @@ will try to remove them too\&. Unlike insertion, more than one module can be spe
 There is usually no reason to remove modules, but some buggy modules require it\&. Your distribution kernel may not have been built to support removal of modules at all\&.
 .RE
 .PP
-\fB\-S\fR \fB\-\-set\-version\fR
+\fB\-S\fR, \fB\-\-set\-version\fR
 .RS 4
 Set the kernel version, rather than using
 \fBuname\fR(2)
@@ -227,7 +223,7 @@ commands which apply are shown prefixed by "install"\&. It does not run any of t
 can be used to extract dependencies of a module from the module itself, but knows nothing of aliases or install commands\&.
 .RE
 .PP
-\fB\-s\fR \fB\-\-syslog\fR
+\fB\-s\fR, \fB\-\-syslog\fR
 .RS 4
 This option causes any error messages to go through the syslog mechanism (as LOG_DAEMON with level LOG_NOTICE) rather than to standard error\&. This is also automatically enabled when stderr is unavailable\&.
 .sp
@@ -240,12 +236,12 @@ commands to other
 commands in the MODPROBE_OPTIONS environment variable\&.
 .RE
 .PP
-\fB\-V\fR \fB\-\-version\fR
+\fB\-V\fR, \fB\-\-version\fR
 .RS 4
 Show version of program and exit\&.
 .RE
 .PP
-\fB\-v\fR \fB\-\-verbose\fR
+\fB\-v\fR, \fB\-\-verbose\fR
 .RS 4
 Print messages about what the program is doing\&. Usually
 \fBmodprobe\fR
@@ -268,7 +264,6 @@ The MODPROBE_OPTIONS environment variable can also be used to pass arguments to
 This manual page originally Copyright 2002, Rusty Russell, IBM Corporation\&. Maintained by Jon Masters and others\&.
 .SH "SEE ALSO"
 .PP
-
 \fBmodprobe.d\fR(5),
 \fBinsmod\fR(8),
 \fBrmmod\fR(8),

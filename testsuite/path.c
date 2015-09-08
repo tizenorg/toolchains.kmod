@@ -1,18 +1,19 @@
 /*
- * Copyright (C) 2012  ProFUSION embedded systems
+ * Copyright (C) 2012-2013  ProFUSION embedded systems
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include <assert.h>
@@ -94,120 +95,109 @@ static void *get_libc_func(const char *f)
 	return fp;
 }
 
-TS_EXPORT FILE *fopen(const char *path, const char *mode)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_fopen)(const char *path, const char *mode);
-
-	if (!get_rootpath(__func__))
-		return NULL;
-
-	_fopen = get_libc_func("fopen");
-
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return NULL;
-
-	return (void *) (long) (*_fopen)(p, mode);
+/* wrapper template for a function with one "const char* path" argument */
+#define WRAP_1ARG(rettype, failret, name) \
+TS_EXPORT rettype name(const char *path) \
+{ \
+	const char *p;				\
+	char buf[PATH_MAX * 2];                 \
+	static rettype (*_fn)(const char*);	\
+						\
+	if (!get_rootpath(__func__))		\
+		return failret;			\
+	_fn = get_libc_func(#name);		\
+	p = trap_path(path, buf);		\
+	if (p == NULL)				\
+		return failret;			\
+	return (*_fn)(p);			\
 }
 
-TS_EXPORT int open(const char *path, int flags, ...)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_open)(const char *path, int flags, ...);
-
-	if (!get_rootpath(__func__))
-		return -1;
-
-	_open = get_libc_func("open");
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return -1;
-
-	if (flags & O_CREAT) {
-		mode_t mode;
-		va_list ap;
-
-		va_start(ap, flags);
-		mode = va_arg(ap, mode_t);
-		va_end(ap);
-		_open(p, flags, mode);
-	}
-
-	return _open(p, flags);
+/* wrapper template for a function with "const char* path" and another argument */
+#define WRAP_2ARGS(rettype, failret, name, arg2t)	\
+TS_EXPORT rettype name(const char *path, arg2t arg2)	\
+{ \
+	const char *p;					\
+	char buf[PATH_MAX * 2];				\
+	static rettype (*_fn)(const char*, arg2t arg2);	\
+							\
+	if (!get_rootpath(__func__))			\
+		return failret;				\
+	_fn = get_libc_func(#name);			\
+	p = trap_path(path, buf);			\
+	if (p == NULL)					\
+		return failret;				\
+	return (*_fn)(p, arg2);				\
 }
 
-TS_EXPORT int stat(const char *path, struct stat *st)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_stat)(const char *path, struct stat *buf);
-
-	if (!get_rootpath(__func__))
-		return -1;
-
-	_stat = get_libc_func("stat");
-
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return -1;
-
-	return _stat(p, st);
+/* wrapper template for open family */
+#define WRAP_OPEN(suffix)					\
+TS_EXPORT int open ## suffix (const char *path, int flags, ...)	\
+{ \
+	const char *p;						\
+	char buf[PATH_MAX * 2];					\
+	static int (*_fn)(const char *path, int flags, ...);	\
+								\
+	if (!get_rootpath(__func__))				\
+		return -1;					\
+	_fn = get_libc_func("open" #suffix);			\
+	p = trap_path(path, buf);				\
+	if (p == NULL)						\
+		return -1;					\
+								\
+	if (flags & O_CREAT) {					\
+		mode_t mode;					\
+		va_list ap;					\
+								\
+		va_start(ap, flags);				\
+		mode = va_arg(ap, mode_t);			\
+		va_end(ap);					\
+		return _fn(p, flags, mode);			\
+	}							\
+								\
+	return _fn(p, flags);					\
 }
 
-TS_EXPORT int __xstat(int ver, const char *path, struct stat *st)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_xstat)(int __ver, const char *__filename,
-						struct stat *__stat_buf);
-
-	if (!get_rootpath(__func__))
-		return -1;
-
-	_xstat = get_libc_func("__xstat");
-
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return -1;
-
-	return _xstat(ver, p, st);
+/* wrapper template for __xstat family */
+#define WRAP_VERSTAT(prefix, suffix)			    \
+TS_EXPORT int prefix ## stat ## suffix (int ver,	    \
+			      const char *path,		    \
+	                      struct stat ## suffix *st)    \
+{ \
+	const char *p;					    \
+	char buf[PATH_MAX * 2];				    \
+	static int (*_fn)(int ver, const char *path,	    \
+		          struct stat ## suffix *);	    \
+	_fn = get_libc_func(#prefix "stat" #suffix);	    \
+							    \
+	if (!get_rootpath(__func__))			    \
+		return -1;				    \
+	p = trap_path(path, buf);			    \
+	if (p == NULL)					    \
+		return -1;				    \
+							    \
+	return _fn(ver, p, st);				    \
 }
 
-TS_EXPORT int access(const char *path, int mode)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_access)(const char *path, int mode);
+WRAP_1ARG(DIR*, NULL, opendir);
 
-	if (!get_rootpath(__func__))
-		return -1;
+WRAP_2ARGS(FILE*, NULL, fopen, const char*);
+WRAP_2ARGS(int, -1, mkdir, mode_t);
+WRAP_2ARGS(int, -1, access, int);
+WRAP_2ARGS(int, -1, stat, struct stat*);
+WRAP_2ARGS(int, -1, lstat, struct stat*);
+#ifndef _FILE_OFFSET_BITS
+WRAP_2ARGS(int, -1, stat64, struct stat64*);
+WRAP_2ARGS(int, -1, lstat64, struct stat64*);
+WRAP_OPEN(64);
+#endif
 
-	_access = get_libc_func("access");
+WRAP_OPEN();
 
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return -1;
-
-	return _access(p, mode);
-}
-
-TS_EXPORT DIR *opendir(const char *path)
-{
-	const char *p;
-	char buf[PATH_MAX * 2];
-	static int (*_opendir)(const char *path);
-
-	if (!get_rootpath(__func__))
-		return NULL;
-
-	_opendir = get_libc_func("opendir");
-
-	p = trap_path(path, buf);
-	if (p == NULL)
-		return NULL;
-
-	return (void *)(long)(*_opendir)(p);
-}
+#ifdef HAVE___XSTAT
+WRAP_VERSTAT(__x,);
+WRAP_VERSTAT(__lx,);
+#ifndef _FILE_OFFSET_BITS
+WRAP_VERSTAT(__x,64);
+WRAP_VERSTAT(__lx,64);
+#endif
+#endif

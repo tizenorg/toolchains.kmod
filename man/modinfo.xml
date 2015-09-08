@@ -76,6 +76,8 @@
       <varlistentry>
         <term>
           <option>-V</option>
+        </term>
+        <term>
           <option>--version</option>
         </term>
         <listitem>
@@ -87,6 +89,8 @@
       <varlistentry>
         <term>
           <option>-F</option>
+        </term>
+        <term>
           <option>--field</option>
         </term>
         <listitem>
@@ -100,6 +104,19 @@
             <literal>parm</literal>, <literal>alias</literal> and
             <literal>depends</literal> fields.  The special field
             <literal>filename</literal> lists the filename of the module.
+          </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <option>-b <replaceable>basedir</replaceable></option>
+        </term>
+        <term>
+          <option>--basedir <replaceable>basedir</replaceable></option>
+        </term>
+        <listitem>
+          <para>
+            Root directory for modules, <filename>/</filename> by default.
           </para>
         </listitem>
       </varlistentry>
@@ -121,6 +138,8 @@
       <varlistentry>
         <term>
           <option>-0</option>
+        </term>
+        <term>
           <option>--null</option>
         </term>
         <listitem>
@@ -134,18 +153,31 @@
       <varlistentry>
         <term>
           <option>-a</option>
+          <option>--author</option>
+        </term>
+        <term>
           <option>-d</option>
+          <option>--description</option>
+        </term>
+        <term>
           <option>-l</option>
+          <option>--license</option>
+        </term>
+        <term>
           <option>-p</option>
+          <option>--parameters</option>
+        </term>
+        <term>
           <option>-n</option>
+          <option>--filename</option>
         </term>
         <listitem>
           <para>
-            These are shortcuts for <literal>author</literal>,
-            <literal>description</literal>, <literal>license</literal>.
-            <literal>parm</literal> and <literal>filename</literal>
-            respectively, to ease the transition from the old modutils
-            <command>modinfo</command>.
+            These are shortcuts for the <option>--field</option> flag's
+            <literal>author</literal>, <literal>description</literal>,
+            <literal>license</literal>, <literal>parm</literal> and
+            <literal>filename</literal> arguments, to ease the transition
+            from the old modutils <command>modinfo</command>.
           </para>
         </listitem>
       </varlistentry>

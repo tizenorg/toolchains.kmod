@@ -1,4 +1,8 @@
-SUBDIRS = . libkmod/docs man
+SUBDIRS = . libkmod/docs
+
+if BUILD_MANPAGES
+SUBDIRS += man
+endif
 
 DISTCLEAN_LOCAL_HOOKS =
 EXTRA_DIST =
@@ -9,19 +13,12 @@ AM_MAKEFLAGS = --no-print-directory
 AM_CPPFLAGS = \
 	-include $(top_builddir)/config.h \
 	-I$(top_srcdir)/libkmod \
-	-DROOTPREFIX=\""$(rootprefix)"\" \
 	-DSYSCONFDIR=\""$(sysconfdir)"\" \
 	-DLIBEXECDIR=\""$(libexecdir)"\" \
 	${zlib_CFLAGS}
 
-AM_CFLAGS = \
-	-fvisibility=hidden \
-	-ffunction-sections \
-	-fdata-sections
-
-AM_LDFLAGS = \
-	-Wl,--gc-sections \
-	-Wl,--as-needed
+AM_CFLAGS = $(WARNINGFLAGS)
+AM_LDFLAGS = $(GCLDFLAGS)
 
 SED_PROCESS = \
 	$(AM_V_GEN)$(MKDIR_P) $(dir $@) && $(SED) \
@@ -39,9 +36,9 @@ SED_PROCESS = \
 %.pc: %.pc.in Makefile
 	$(SED_PROCESS)
 
-LIBKMOD_CURRENT=2
-LIBKMOD_REVISION=0
-LIBKMOD_AGE=0
+LIBKMOD_CURRENT=4
+LIBKMOD_REVISION=5
+LIBKMOD_AGE=2
 
 noinst_LTLIBRARIES = libkmod/libkmod-util.la
 libkmod_libkmod_util_la_SOURCES = libkmod/libkmod-hash.c \
@@ -56,8 +53,9 @@ lib_LTLIBRARIES = libkmod/libkmod.la
 
 libkmod_libkmod_la_SOURCES =\
 	libkmod/libkmod.h \
-	libkmod/libkmod-private.h \
+	libkmod/libkmod-internal.h \
 	libkmod/macro.h \
+	libkmod/missing.h \
 	libkmod/libkmod.c \
 	libkmod/libkmod-list.c \
 	libkmod/libkmod-config.c \
@@ -65,10 +63,11 @@ libkmod_libkmod_la_SOURCES =\
 	libkmod/libkmod-index.h \
 	libkmod/libkmod-module.c \
 	libkmod/libkmod-file.c \
-	libkmod/libkmod-elf.c
+	libkmod/libkmod-elf.c \
+	libkmod/libkmod-signature.c
 
 EXTRA_DIST += libkmod/libkmod.sym
-EXTRA_DIST += libkmod/COPYING libkmod/README
+EXTRA_DIST += libkmod/README libkmod/COPYING testsuite/COPYING COPYING
 
 libkmod_libkmod_la_LDFLAGS = $(AM_LDFLAGS) \
 	-version-info $(LIBKMOD_CURRENT):$(LIBKMOD_REVISION):$(LIBKMOD_AGE) \
@@ -78,17 +77,21 @@ libkmod_libkmod_la_DEPENDENCIES = libkmod/libkmod-util.la \
 libkmod_libkmod_la_LIBADD = libkmod/libkmod-util.la \
 			    ${liblzma_LIBS} ${zlib_LIBS}
 
-noinst_LTLIBRARIES += libkmod/libkmod-private.la
-libkmod_libkmod_private_la_SOURCES = $(libkmod_libkmod_la_SOURCES)
-libkmod_libkmod_private_la_LDFLAGS = $(AM_LDFLAGS) \
+noinst_LTLIBRARIES += libkmod/libkmod-internal.la
+libkmod_libkmod_internal_la_SOURCES = $(libkmod_libkmod_la_SOURCES)
+libkmod_libkmod_internal_la_LDFLAGS = $(AM_LDFLAGS) \
 	-Wl,--version-script=$(top_srcdir)/libkmod/libkmod.sym
-libkmod_libkmod_private_la_DEPENDENCIES  = $(libkmod_libkmod_la_DEPENDENCIES)
-libkmod_libkmod_private_la_LIBADD = $(libkmod_libkmod_la_LIBADD)
+libkmod_libkmod_internal_la_DEPENDENCIES  = $(libkmod_libkmod_la_DEPENDENCIES)
+libkmod_libkmod_internal_la_LIBADD = $(libkmod_libkmod_la_LIBADD)
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libkmod/libkmod.pc
 EXTRA_DIST += libkmod/libkmod.pc.in
 CLEANFILES += libkmod/libkmod.pc
+
+bashcompletiondir=@bashcompletiondir@
+dist_bashcompletion_DATA = \
+	shell-completion/bash/kmod
 
 install-exec-hook:
 	if test "$(libdir)" != "$(rootlibdir)"; then \
@@ -108,23 +111,15 @@ bin_PROGRAMS = tools/kmod
 noinst_SCRIPTS = tools/insmod tools/rmmod tools/lsmod \
 		 tools/modprobe tools/modinfo tools/depmod
 
-tools_kmod_SOURCES = tools/kmod.c tools/kmod.h tools/kmod-lsmod.c \
-		     tools/kmod-rmmod.c tools/kmod-insmod.c \
-		     tools/kmod-modinfo.c tools/kmod-modprobe.c \
-		     tools/kmod-depmod.c
-tools_kmod_CPPFLAGS = $(AM_CPPFLAGS) -DKMOD_BUNDLE_TOOL=1
-tools_kmod_CFLAGS = $(AM_CFLAGS)
+tools_kmod_SOURCES = tools/kmod.c tools/kmod.h tools/lsmod.c \
+		     tools/rmmod.c tools/insmod.c \
+		     tools/modinfo.c tools/modprobe.c \
+		     tools/depmod.c tools/log.h tools/log.c \
+		     tools/static-nodes.c
 tools_kmod_LDADD = libkmod/libkmod-util.la \
-		   libkmod/libkmod.la
+		   libkmod/libkmod-internal.la
 
-noinst_PROGRAMS = tools/kmod-nolib
-tools_kmod_nolib_SOURCES = $(tools_kmod_SOURCES)
-tools_kmod_nolib_CPPFLAGS = $(tools_kmod_CPPFLAGS)
-tools_kmod_nolib_CFLAGS = $(tools_kmod_CFLAGS)
-tools_kmod_nolib_LDADD = libkmod/libkmod-util.la \
-			 libkmod/libkmod-private.la
-
-${noinst_SCRIPTS}: tools/kmod-nolib
+${noinst_SCRIPTS}: tools/kmod
 	$(AM_V_GEN) ($(RM) $@; \
 		$(LN_S) $(notdir $<) $@)
 endif
@@ -133,15 +128,27 @@ endif
 # TESTSUITE
 # ------------------------------------------------------------------------------
 
-testsuite/rootfs: $(top_srcdir)/testsuite/rootfs.tar.xz
-	$(AM_V_GEN) tar -C testsuite/ \
-		-xJf $(top_srcdir)/testsuite/rootfs.tar.xz
+ROOTFS = testsuite/rootfs
+ROOTFS_PRISTINE = $(top_srcdir)/testsuite/rootfs-pristine
+CREATE_ROOTFS = $(AM_V_GEN) ( $(RM) -rf $(ROOTFS) && \
+				cp -r $(ROOTFS_PRISTINE) $(ROOTFS) && \
+				touch testsuite/stamp-rootfs && \
+				find $(ROOTFS) -type d -exec chmod +w {} \; )
+
+rootfs:
+	$(CREATE_ROOTFS)
+.PHONY: rootfs
+
+$(ROOTFS): $(ROOTFS_PRISTINE)
+	$(CREATE_ROOTFS)
 
 TESTSUITE_OVERRIDE_LIBS = testsuite/uname.la testsuite/path.la \
 			  testsuite/init_module.la \
 			  testsuite/delete_module.la
 TESTSUITE_OVERRIDE_LIBS_LDFLAGS = avoid-version -module -shared -export-dynamic \
 				  -rpath /nowhere -ldl
+
+check-am: rootfs
 
 check_LTLIBRARIES = $(TESTSUITE_OVERRIDE_LIBS)
 
@@ -152,43 +159,60 @@ testsuite_delete_module_la_LDFLAGS = $(TESTSUITE_OVERRIDE_LIBS_LDFLAGS)
 testsuite_init_module_la_LDFLAGS = $(TESTSUITE_OVERRIDE_LIBS_LDFLAGS)
 testsuite_init_module_la_SOURCES = testsuite/init_module.c \
 				   testsuite/stripped-module.h
-testsuite_init_module_la_LIBADD = libkmod/libkmod-private.la
-
-testsuite-distclean:
-	-rm -rf testsuite/rootfs
-
-DISTCLEAN_LOCAL_HOOKS += testsuite-distclean
-EXTRA_DIST += testsuite/rootfs.tar.xz
+testsuite_init_module_la_LIBADD = libkmod/libkmod-internal.la
 
 TESTSUITE_CPPFLAGS = $(AM_CPPFLAGS) \
-		     -DTESTSUITE_ROOTFS=\"$(abs_top_builddir)/testsuite/rootfs/\" \
+		     -DTESTSUITE_ROOTFS=\"$(abs_top_builddir)/$(ROOTFS)/\" \
 		     -DABS_TOP_BUILDDIR=\"$(abs_top_builddir)\"
+TESTSUITE_LDADD = testsuite/libtestsuite.la libkmod/libkmod-internal.la \
+		  libkmod/libkmod-util.la
 
 check_LTLIBRARIES += testsuite/libtestsuite.la
 testsuite_libtestsuite_la_SOURCES = testsuite/testsuite.c \
 				    testsuite/testsuite.h
-testsuite_libtestsuite_la_DEPENDENCIES = testsuite/rootfs
+testsuite_libtestsuite_la_DEPENDENCIES = $(ROOTFS) \
+					 $(TESTSUITE_OVERRIDE_LIBS)
 testsuite_libtestsuite_la_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_libtestsuite_la_LIBADD = -lrt
 
 TESTSUITE = testsuite/test-init testsuite/test-testsuite testsuite/test-loaded \
-	    testsuite/test-modinfo testsuite/test-alias testsuite/test-new-module
+	    testsuite/test-modinfo testsuite/test-alias testsuite/test-new-module \
+	    testsuite/test-modprobe testsuite/test-blacklist \
+	    testsuite/test-dependencies testsuite/test-depmod
+
 check_PROGRAMS = $(TESTSUITE)
 TESTS = $(TESTSUITE)
 
-testsuite_test_init_LDADD = testsuite/libtestsuite.la libkmod/libkmod-private.la
-testsuite_test_init_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
-testsuite_test_testsuite_LDADD = testsuite/libtestsuite.la
+testsuite_test_testsuite_LDADD = testsuite/libtestsuite.la libkmod/libkmod-util.la
 testsuite_test_testsuite_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
-testsuite_test_loaded_LDADD = testsuite/libtestsuite.la libkmod/libkmod-private.la
+testsuite_test_init_LDADD = $(TESTSUITE_LDADD)
+testsuite_test_init_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_test_loaded_LDADD = $(TESTSUITE_LDADD)
 testsuite_test_loaded_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
-testsuite_test_modinfo_LDADD = testsuite/libtestsuite.la
+testsuite_test_modinfo_LDADD = $(TESTSUITE_LDADD)
 testsuite_test_modinfo_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
-testsuite_test_alias_LDADD = testsuite/libtestsuite.la libkmod/libkmod-private.la
+testsuite_test_alias_LDADD = $(TESTSUITE_LDADD)
 testsuite_test_alias_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
-testsuite_test_new_module_LDADD = testsuite/libtestsuite.la libkmod/libkmod-private.la
+testsuite_test_new_module_LDADD = $(TESTSUITE_LDADD)
 testsuite_test_new_module_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_test_modprobe_LDADD = $(TESTSUITE_LDADD)
+testsuite_test_modprobe_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_test_blacklist_LDADD = $(TESTSUITE_LDADD)
+testsuite_test_blacklist_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_test_dependencies_LDADD = $(TESTSUITE_LDADD)
+testsuite_test_dependencies_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
+testsuite_test_depmod_LDADD = $(TESTSUITE_LDADD)
+testsuite_test_depmod_CPPFLAGS = $(TESTSUITE_CPPFLAGS)
 
-DISTCHECK_CONFIGURE_FLAGS=--enable-gtk-doc
+testsuite-distclean:
+	$(RM) -r $(ROOTFS)
+	$(RM) testsuite/stamp-rootfs
+
+DISTCLEAN_LOCAL_HOOKS += testsuite-distclean
+EXTRA_DIST += testsuite/rootfs-pristine
+
+DISTCHECK_CONFIGURE_FLAGS=--enable-gtk-doc --sysconfdir=/etc --with-zlib \
+	--with-bashcompletiondir=$$dc_install_base/$(bashcompletiondir)
 
 distclean-local: $(DISTCLEAN_LOCAL_HOOKS)
 
@@ -211,4 +235,4 @@ kmod-$(VERSION).tar.sign:
 tar: kmod-$(VERSION).tar.xz kmod-$(VERSION).tar.sign
 
 tar-sync: kmod-$(VERSION).tar.xz kmod-$(VERSION).tar.sign
-	scp $^ packages.profusion.mobi:/var/www/packages/kmod/
+	kup put kmod-$(VERSION).tar.xz  kmod-$(VERSION).tar.sign /pub/linux/utils/kernel/kmod/

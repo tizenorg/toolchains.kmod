@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,6 +21,7 @@
 #include "libkmod.h"
 #include "libkmod-hash.h"
 
+#include "libkmod-util.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -83,15 +84,6 @@ void hash_free(struct hash *hash)
 	free(hash);
 }
 
-struct unaligned_short {
-    unsigned short v;
-} __attribute__((packed));
-
-static inline unsigned short get16bits(const char *ptr)
-{
-    return ((struct unaligned_short *)ptr)->v;
-}
-
 static inline unsigned int hash_superfast(const char *key, unsigned int len)
 {
 	/* Paul Hsieh (http://www.azillionmonkeys.com/qed/hash.html)
@@ -104,8 +96,8 @@ static inline unsigned int hash_superfast(const char *key, unsigned int len)
 
 	/* Main loop */
 	for (; len > 0; len--) {
-		hash += get16bits(key);
-		tmp = (get16bits(key + 2) << 11) ^ hash;
+		hash += get_unaligned((uint16_t *) key);
+		tmp = (get_unaligned((uint16_t *)(key + 2)) << 11) ^ hash;
 		hash = (hash << 16) ^ tmp;
 		key += 4;
 		hash += hash >> 11;
@@ -114,14 +106,14 @@ static inline unsigned int hash_superfast(const char *key, unsigned int len)
 	/* Handle end cases */
 	switch (rem) {
 	case 3:
-		hash += get16bits(key);
+		hash += get_unaligned((uint16_t *) key);
 		hash ^= hash << 16;
 		hash ^= key[2] << 18;
 		hash += hash >> 11;
 		break;
 
 	case 2:
-		hash += get16bits(key);
+		hash += get_unaligned((uint16_t *) key);
 		hash ^= hash << 11;
 		hash += hash >> 17;
 		break;
@@ -172,7 +164,8 @@ int hash_add(struct hash *hash, const char *key, const void *value)
 	for (; entry < entry_end; entry++) {
 		int c = strcmp(key, entry->key);
 		if (c == 0) {
-			hash->free_value((void *)entry->value);
+			if (hash->free_value)
+				hash->free_value((void *)entry->value);
 			entry->value = value;
 			return 0;
 		} else if (c < 0) {
@@ -270,6 +263,9 @@ int hash_del(struct hash *hash, const char *key)
 		sizeof(struct hash_entry), hash_entry_cmp);
 	if (entry == NULL)
 		return -ENOENT;
+
+	if (hash->free_value)
+		hash->free_value((void *)entry->value);
 
 	entry_end = bucket->entries + bucket->used;
 	memmove(entry, entry + 1,

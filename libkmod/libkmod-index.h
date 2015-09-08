@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,8 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef _LIBKMOD_INDEX_H
-#define _LIBKMOD_INDEX_H
+#pragma once
 
 #include <stdint.h>
 
@@ -122,10 +121,8 @@ void index_values_free(struct index_value *values);
 /* Implementation using mmap */
 struct index_mm;
 struct index_mm *index_mm_open(struct kmod_ctx *ctx, const char *filename,
-				bool populate, unsigned long long *stamp);
+						unsigned long long *stamp);
 void index_mm_close(struct index_mm *index);
 char *index_mm_search(struct index_mm *idx, const char *key);
 struct index_value *index_mm_searchwild(struct index_mm *idx, const char *key);
 void index_mm_dump(struct index_mm *idx, int fd, const char *prefix);
-
-#endif

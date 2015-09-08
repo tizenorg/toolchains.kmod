@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#pragma once
 #ifndef _LIBKMOD_H_
 #define _LIBKMOD_H_
 
@@ -69,6 +70,7 @@ enum kmod_index {
 	KMOD_INDEX_MODULES_DEP = 0,
 	KMOD_INDEX_MODULES_ALIAS,
 	KMOD_INDEX_MODULES_SYMBOL,
+	KMOD_INDEX_MODULES_BUILTIN,
 	/* Padding to make sure enum is not mapped to char */
 	_KMOD_INDEX_PAD = (1 << 31),
 };
@@ -159,6 +161,13 @@ enum kmod_probe {
 	/* codes below can be used in return value, too */
 	KMOD_PROBE_APPLY_BLACKLIST_ALL =	0x10000,
 	KMOD_PROBE_APPLY_BLACKLIST =		0x20000,
+	KMOD_PROBE_APPLY_BLACKLIST_ALIAS_ONLY =	0x40000,
+};
+
+/* Flags to kmod_module_apply_filter() */
+enum kmod_filter {
+	KMOD_FILTER_BLACKLIST = 0x00001,
+	KMOD_FILTER_BUILTIN = 0x00002,
 };
 
 int kmod_module_remove_module(struct kmod_module *mod, unsigned int flags);
@@ -182,6 +191,10 @@ struct kmod_list *kmod_module_get_dependencies(const struct kmod_module *mod);
 int kmod_module_get_softdeps(const struct kmod_module *mod,
 				struct kmod_list **pre, struct kmod_list **post);
 int kmod_module_get_filtered_blacklist(const struct kmod_ctx *ctx,
+					const struct kmod_list *input,
+					struct kmod_list **output) __attribute__ ((deprecated));
+int kmod_module_apply_filter(const struct kmod_ctx *ctx,
+					enum kmod_filter filter_type,
 					const struct kmod_list *input,
 					struct kmod_list **output);
 

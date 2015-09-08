@@ -1,3 +1,186 @@
+kmod 15
+=======
+
+- Bug fixes:
+	- kmod static-nodes doesn't fail if modules.devname isn't available
+	- Fix getting boolean parameter from kernel cmdline in case the value
+	  is omitted
+	- Fix some mkdir_p() corner cases (used in testsuite and static-nodes)
+
+- New features:
+	- kmod static-nodes creates parent directories if given a -o option
+	- kmod binary statically links to libkmod - if distro is only interested
+	  in the kmod tool (for example in an initrd) it can refrain from
+	  installing the library
+	- Add shell completion for kmod tool
+
+kmod 14
+=======
+
+- Bug fixes:
+	- Fix some format strings
+	- Protect against NULL being passed around to index
+	- Avoid calling syscall() with -1 when finit_module() is not available,
+	  since this doesn't always work
+	- Fix not being able to remove alias due to checking the module's
+	  refcount
+	- Minor fixes and refactors
+
+- New features:
+	- Improve libkmod documentation, particularly on how flags are dealt
+	  with.
+	- Remove ability to build a static libkmod
+	- Add static-nodes command to kmod that parses modules.devname
+	  generating output in useful formats
+
+kmod 13
+=======
+
+- Bug fixes:
+	- Add the long option --symbol-prefix option to depmod (it was absent)
+	  and fix its behavior
+	- Don't abort if there's a bogus line in configuration file like "alias
+	  psmouse off". Some distros are carrying this since the days of
+	  modutils
+
+- New features:
+	- Add support for finit_module(2). If the module is load straight from
+	  the disk and without compression we use finit_module() syscall when
+	  available, falling back to init_module() otherwise
+	- kmod_module_get_info() also returns the signature if the module is
+	  signed and modinfo uses it
+	- Use secure_getenv if available
+	- rmmod understands builtin modules, just like modprobe does
+	- Improve compatibility with musl-libc
+	- Test cases exit with success when receiving a signal if they are
+	  xfail tests
+
+kmod 12
+=======
+
+- Bug fixes:
+	- Fix removing vermagic from module when told to force load a module
+	- Fix removing __versions section when told to force load a module: we
+	  need to mangle the section header, not the section.
+	- modinfo no longer fails while loading a module from file when path
+	  contains ".ko" substring
+
+kmod 11
+=======
+
+- Improvements to testsuite:
+	- Fix testsuite defining symbols twice on 32 bit systems
+	- Allow to check generated files against correct ones
+
+- New features:
+	- libkmod now keeps a file opened after the first call to
+	  kmod_module_get_{info,versions,symbols,dependency_symbols}. This
+	  reduces signficantly the amount of time depmod tool takes to
+	  execute. Particularly if compressed modules are used.
+	- Remove --with-rootprefix from build system. It was not a great idea
+	  after all and should not be use since it causes more harm then
+	  benefits.
+	- Hide --wait option on rmmod. This feature is being targeted for
+	  removal from kernel. rmmod still accepts this option, but it's hidden
+	  now: man page and usage() says nothing about it and if it's used,
+	  user will get a 10s sleep. This way we can check and help if anyone
+	  is using this feature.
+	- Refactor message logging on all tools, giving proper prefix, routing
+	  everything to syslog when asked for, etc.
+
+- Bug fixes:
+	- Fix parsing of modules.order when using compressed modules
+	- Usage messages go to stdout instead of stderr
+	- Fix memory leak in hash implementation
+
+kmod 10
+=======
+
+- New features:
+	- Read coresize from /sys if supported
+
+	- Add flag to kmod_module_probe_insert() to apply blacklisting during
+	  probe only if mod is an alias. Now modprobe uses this flag by default.
+	  This is needed to fix a change in behavior regarding module-init-tools
+	  and ultimately makes us loading a blacklisted module.
+
+- Better formatting in man pages
+
+- Add option to disable building man pages at build time
+
+- Fixes in the testsuite and refactoring of LDPRELOAD'ed libraries
+
+- Re-licensing testsuite as LGPL
+
+kmod 9
+======
+
+- Improvements to the testsuite:
+	- Check for correct handling of softdep loops
+	- Check for correct handling of install command loops
+
+- Bug fixes:
+	- Fix build with compilers that don't support --gc-sections
+	- Handle errors when dealing with gzipped modules
+	- depmod now handles errors while writing indices, so it doesn't end up
+	  with a corrupted index without telling the user
+
+kmod 8
+======
+
+- No new features, small bug fixes only.
+	- Fix a bug in "modprobe -c" output: be compatible with
+	  module-init-tools
+
+	- Give a useful error message when init_module fails due to bad
+	  parameter or unknown symbols
+
+	- Fix doc generation
+
+kmod 7
+======
+
+- Re-order dirs for configuration files to match the change in systemd and
+  udev: now the priority is:
+	1. /etc/modprobe.d
+	2. /run/modprobe.d
+	3. /lib/modprobe.d
+
+- Fix setting CFLAGS/LDFLAGS in build system. This prevented us from not
+  allowing the user to set his preferences.
+
+- Bug fixes:
+	- Return same error codes of module-init-tools when removing modules
+	  with modprobe
+	- Fix builtin output in "--show-depends" when target kernel is not the
+	  same of the running kernel
+	- 'modprobe -r' always look at all command line arguments
+	- Fix '-q' usage in modprobe
+
+kmod 6
+======
+
+- New API in libkmod:
+	- kmod_module_apply_filter(): a generic function to apply filters in a
+	  list of modules. This deprecates the use of
+	  kmod_module_get_filtered_blacklist()
+
+- More tests in testsuite
+
+- Add compatibility with uClibc again
+
+- Lookup modules.builtin.bin to decide if a module is built in kernel
+
+- Downgrade some log messages so we don't annoy people with useless messages
+
+- Bug fixes:
+	- Flag --ignore-loaded was not being properly handled
+	- Infinite loop with softdeps
+	- Infinite loop with dumb user configuration with install commands
+	- Fix leak in index when there's a partial match
+
+- Move repository and tarballs to kernel.org
+
 kmod 5
 ======
 

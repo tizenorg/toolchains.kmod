@@ -1,18 +1,19 @@
 /*
- * Copyright (C) 2012  ProFUSION embedded systems
+ * Copyright (C) 2012-2013  ProFUSION embedded systems
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include <errno.h>
@@ -23,11 +24,14 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
+#include "libkmod-util.h"
 #include "testsuite.h"
 
 static const char *ANSI_HIGHLIGHT_GREEN_ON = "\x1B[1;32m";
@@ -54,6 +58,19 @@ struct _env_config {
 	[TC_INIT_MODULE_RETCODES] = { S_TC_INIT_MODULE_RETCODES, OVERRIDE_LIBDIR "init_module.so" },
 	[TC_DELETE_MODULE_RETCODES] = { S_TC_DELETE_MODULE_RETCODES, OVERRIDE_LIBDIR "delete_module.so" },
 };
+
+#define USEC_PER_SEC  1000000ULL
+#define USEC_PER_MSEC  1000ULL
+#define TEST_TIMEOUT_USEC 2 * USEC_PER_SEC
+static unsigned long long now_usec(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+		return 0;
+
+	return ts_usec(&ts);
+}
 
 static void help(void)
 {
@@ -158,6 +175,7 @@ static void test_export_environ(const struct test *t)
 	char *preload = NULL;
 	size_t preloadlen = 0;
 	size_t i;
+	const struct keyval *env;
 
 	unsetenv("LD_PRELOAD");
 
@@ -191,10 +209,13 @@ static void test_export_environ(const struct test *t)
 		setenv("LD_PRELOAD", preload, 1);
 
 	free(preload);
+
+	for (env = t->env_vars; env && env->key; env++)
+		setenv(env->key, env->val, 1);
 }
 
 static inline int test_run_child(const struct test *t, int fdout[2],
-								int fderr[2])
+						int fderr[2], int fdmonitor[2])
 {
 	/* kill child if parent dies */
 	prctl(PR_SET_PDEATHSIG, SIGTERM);
@@ -205,7 +226,7 @@ static inline int test_run_child(const struct test *t, int fdout[2],
 	if (t->output.stdout != NULL) {
 		close(fdout[0]);
 		if (dup2(fdout[1], STDOUT_FILENO) < 0) {
-			ERR("could not redirect stdout to pipe: %m");
+			ERR("could not redirect stdout to pipe: %m\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -213,7 +234,31 @@ static inline int test_run_child(const struct test *t, int fdout[2],
 	if (t->output.stderr != NULL) {
 		close(fderr[0]);
 		if (dup2(fderr[1], STDERR_FILENO) < 0) {
-			ERR("could not redirect stdout to pipe: %m");
+			ERR("could not redirect stdout to pipe: %m\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	close(fdmonitor[0]);
+
+	if (t->config[TC_ROOTFS] != NULL) {
+		const char *stamp = TESTSUITE_ROOTFS "../stamp-rootfs";
+		const char *rootfs = t->config[TC_ROOTFS];
+		struct stat rootfsst, stampst;
+
+		if (stat(stamp, &stampst) != 0) {
+			ERR("could not stat %s\n - %m", stamp);
+			exit(EXIT_FAILURE);
+		}
+
+		if (stat(rootfs, &rootfsst) != 0) {
+			ERR("could not stat %s\n - %m", rootfs);
+			exit(EXIT_FAILURE);
+		}
+
+		if (stat_mstamp(&rootfsst) > stat_mstamp(&stampst)) {
+			ERR("rootfs %s is dirty, please run 'make rootfs' before runnning this test\n",
+								rootfs);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -225,13 +270,11 @@ static inline int test_run_child(const struct test *t, int fdout[2],
 }
 
 static inline bool test_run_parent_check_outputs(const struct test *t,
-							int fdout, int fderr)
+			int fdout, int fderr, int fdmonitor, pid_t child)
 {
-	struct epoll_event ep_outpipe, ep_errpipe;
+	struct epoll_event ep_outpipe, ep_errpipe, ep_monitor;
 	int err, fd_ep, fd_matchout = -1, fd_matcherr = -1;
-
-	if (t->output.stdout == NULL && t->output.stderr == NULL)
-		return true;
+	unsigned long long end_usec, start_usec;
 
 	fd_ep = epoll_create1(EPOLL_CLOEXEC);
 	if (fd_ep < 0) {
@@ -278,11 +321,28 @@ static inline bool test_run_parent_check_outputs(const struct test *t,
 	} else
 		fderr = -1;
 
-	for (err = 0; fdout >= 0 || fderr >= 0;) {
-		int fdcount, i;
-		struct epoll_event ev[4];
+	memset(&ep_monitor, 0, sizeof(struct epoll_event));
+	ep_monitor.events = EPOLLHUP;
+	ep_monitor.data.ptr = &fdmonitor;
+	if (epoll_ctl(fd_ep, EPOLL_CTL_ADD, fdmonitor, &ep_monitor) < 0) {
+		err = -errno;
+		ERR("could not add monitor fd to epoll: %m\n");
+		goto out;
+	}
 
-		fdcount = epoll_wait(fd_ep, ev, 4, -1);
+	start_usec = now_usec();
+	end_usec = start_usec + TEST_TIMEOUT_USEC;
+
+	for (err = 0; fdmonitor >= 0 || fdout >= 0 || fderr >= 0;) {
+		int fdcount, i, timeout;
+		struct epoll_event ev[4];
+		unsigned long long curr_usec = now_usec();
+
+		if (curr_usec > end_usec)
+			break;
+
+		timeout = (end_usec - curr_usec) / USEC_PER_MSEC;
+		fdcount = epoll_wait(fd_ep, ev, 4, timeout);
 		if (fdcount < 0) {
 			if (errno == EINTR)
 				continue;
@@ -311,8 +371,13 @@ static inline bool test_run_parent_check_outputs(const struct test *t,
 
 				if (*fd == fdout)
 					fd_match = fd_matchout;
-				else
+				else if (*fd == fderr)
 					fd_match = fd_matcherr;
+				else {
+					ERR("Unexpected activity on monitor pipe\n");
+					err = -EINVAL;
+					goto out;
+				}
 
 				for (;;) {
 					int rmatch = read(fd_match,
@@ -351,8 +416,14 @@ static inline bool test_run_parent_check_outputs(const struct test *t,
 				*fd = -1;
 			}
 		}
-
 	}
+
+	if (err == 0 && fdmonitor >= 0) {
+		err = -EINVAL;
+		ERR("Test '%s' timed out, killing %d\n", t->name, child);
+		kill(child, SIGKILL);
+	}
+
 out:
 	if (fd_matchout >= 0)
 		close(fd_matchout);
@@ -363,8 +434,102 @@ out:
 	return err == 0;
 }
 
+static inline int safe_read(int fd, void *buf, size_t count)
+{
+	int r;
+
+	while (1) {
+		r = read(fd, buf, count);
+		if (r == -1 && errno == EINTR)
+			continue;
+		break;
+	}
+
+	return r;
+}
+
+static bool check_generated_files(const struct test *t)
+{
+	const struct keyval *k;
+
+	/* This is not meant to be a diff replacement, just stupidly check if
+	 * the files match. Bear in mind they can be binary files */
+	for (k = t->output.files; k && k->key; k++) {
+		struct stat sta, stb;
+		int fda = -1, fdb = -1;
+		char bufa[4096];
+		char bufb[4096];
+
+		fda = open(k->key, O_RDONLY);
+		if (fda < 0) {
+			ERR("could not open %s\n - %m\n", k->key);
+			goto fail;
+		}
+
+		fdb = open(k->val, O_RDONLY);
+		if (fdb < 0) {
+			ERR("could not open %s\n - %m\n", k->val);
+			goto fail;
+		}
+
+		if (fstat(fda, &sta) != 0) {
+			ERR("could not fstat %d %s\n - %m\n", fda, k->key);
+			goto fail;
+		}
+
+		if (fstat(fdb, &stb) != 0) {
+			ERR("could not fstat %d %s\n - %m\n", fdb, k->key);
+			goto fail;
+		}
+
+		if (sta.st_size != stb.st_size) {
+			ERR("sizes do not match %s %s\n", k->key, k->val);
+			goto fail;
+		}
+
+		for (;;) {
+			int r, done;
+
+			r = safe_read(fda, bufa, sizeof(bufa));
+			if (r < 0)
+				goto fail;
+
+			if (r == 0)
+				/* size is already checked, go to next file */
+				goto next;
+
+			for (done = 0; done < r;) {
+				int r2 = safe_read(fdb, bufb + done, r - done);
+
+				if (r2 <= 0)
+					goto fail;
+
+				done += r2;
+			}
+
+			if (memcmp(bufa, bufb, r) != 0)
+				goto fail;
+		}
+
+next:
+		close(fda);
+		close(fdb);
+		continue;
+
+fail:
+		if (fda >= 0)
+			close(fda);
+		if (fdb >= 0)
+			close(fdb);
+
+		return false;
+	}
+
+	return true;
+}
+
 static inline int test_run_parent(const struct test *t, int fdout[2],
-								int fderr[2])
+				int fderr[2], int fdmonitor[2], pid_t child)
 {
 	pid_t pid;
 	int err;
@@ -375,8 +540,10 @@ static inline int test_run_parent(const struct test *t, int fdout[2],
 		close(fdout[1]);
 	if (t->output.stderr != NULL)
 		close(fderr[1]);
+	close(fdmonitor[1]);
 
-	matchout = test_run_parent_check_outputs(t, fdout[0], fderr[0]);
+	matchout = test_run_parent_check_outputs(t, fdout[0], fderr[0],
+							fdmonitor[0], child);
 
 	/*
 	 * break pipe on the other end: either child already closed or we want
@@ -386,6 +553,7 @@ static inline int test_run_parent(const struct test *t, int fdout[2],
 		close(fdout[0]);
 	if (t->output.stderr != NULL)
 		close(fderr[0]);
+	close(fdmonitor[0]);
 
 	do {
 		pid = wait(&err);
@@ -405,7 +573,11 @@ static inline int test_run_parent(const struct test *t, int fdout[2],
 	} else if (WIFSIGNALED(err)) {
 		ERR("'%s' [%u] terminated by signal %d (%s)\n", t->name, pid,
 				WTERMSIG(err), strsignal(WTERMSIG(err)));
+		return t->expected_fail ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
+
+	if (matchout)
+		matchout = check_generated_files(t);
 
 	if (t->expected_fail == false) {
 		if (err == 0) {
@@ -427,7 +599,7 @@ static inline int test_run_parent(const struct test *t, int fdout[2],
 		if (err == 0) {
 			if (matchout) {
 				LOG("%sUNEXPECTED PASS%s: %s\n",
-					ANSI_HIGHLIGHT_GREEN_ON, ANSI_HIGHLIGHT_OFF,
+					ANSI_HIGHLIGHT_RED_ON, ANSI_HIGHLIGHT_OFF,
 					t->name);
 				err = EXIT_FAILURE;
 			} else
@@ -445,11 +617,35 @@ static inline int test_run_parent(const struct test *t, int fdout[2],
 	return err;
 }
 
+static int prepend_path(const char *extra)
+{
+	char *oldpath, *newpath;
+	int r;
+
+	if (extra == NULL)
+		return 0;
+
+	oldpath = getenv("PATH");
+	if (oldpath == NULL)
+		return setenv("PATH", extra, 1);
+
+	if (asprintf(&newpath, "%s:%s", extra, oldpath) < 0) {
+		ERR("failed to allocate memory to new PATH\n");
+		return -1;
+	}
+
+	r = setenv("PATH", newpath, 1);
+	free(newpath);
+
+	return r;
+}
+
 int test_run(const struct test *t)
 {
 	pid_t pid;
 	int fdout[2];
 	int fderr[2];
+	int fdmonitor[2];
 
 	if (t->need_spawn && oneshot)
 		test_run_spawned(t);
@@ -468,6 +664,16 @@ int test_run(const struct test *t)
 		}
 	}
 
+	if (pipe(fdmonitor) != 0) {
+		ERR("could not create monitor pipe for %s\n", t->name);
+		return EXIT_FAILURE;
+	}
+
+	if (prepend_path(t->path) < 0) {
+		ERR("failed to prepend '%s' to PATH\n", t->path);
+		return EXIT_FAILURE;
+	}
+
 	LOG("running %s, in forked context\n", t->name);
 
 	pid = fork();
@@ -478,7 +684,7 @@ int test_run(const struct test *t)
 	}
 
 	if (pid > 0)
-		return test_run_parent(t, fdout, fderr);
+		return test_run_parent(t, fdout, fderr, fdmonitor, pid);
 
-	return test_run_child(t, fdout, fderr);
+	return test_run_child(t, fdout, fderr, fdmonitor);
 }

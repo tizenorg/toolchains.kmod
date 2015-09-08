@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: modprobe.d
 .\"    Author: Jon Masters <jcm@jonmasters.org>
-.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 02/06/2012
+.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
+.\"      Date: 08/22/2013
 .\"    Manual: modprobe.d
 .\"    Source: kmod
 .\"  Language: English
 .\"
-.TH "MODPROBE\&.D" "5" "02/06/2012" "kmod" "modprobe.d"
+.TH "MODPROBE\&.D" "5" "08/22/2013" "kmod" "modprobe.d"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -31,7 +31,7 @@
 modprobe.d \- Configuration directory for modprobe
 .SH "SYNOPSIS"
 .PP
-/usr/lib/modprobe\&.d/*\&.conf
+/lib/modprobe\&.d/*\&.conf
 .PP
 /etc/modprobe\&.d/*\&.conf
 .PP
@@ -101,8 +101,7 @@ options \fImodulename\fR \fIoption\&.\&.\&.\fR
 This command allows you to add options to the module
 \fImodulename\fR
 (which might be an alias) every time it is inserted into the kernel: whether directly (using
-\fBmodprobe\fR
-\fImodulename\fR
+\fBmodprobe\fR\fImodulename\fR
 or because the module being inserted depends on this module\&.
 .sp
 All options are added together: they can come from an

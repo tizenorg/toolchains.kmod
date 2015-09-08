@@ -1,18 +1,19 @@
 /*
- * Copyright (C) 2012  ProFUSION embedded systems
+ * Copyright (C) 2012-2013  ProFUSION embedded systems
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include <stdio.h>
@@ -31,7 +32,7 @@
 
 
 #define TEST_UNAME "4.0.20-kmod"
-static int testsuite_uname(const struct test *t)
+static __noreturn int testsuite_uname(const struct test *t)
 {
 	struct utsname u;
 	int err = uname(&u);
@@ -48,15 +49,12 @@ static int testsuite_uname(const struct test *t)
 
 	exit(EXIT_SUCCESS);
 }
-static const struct test stestsuite_uname = {
-	.name = "testsuite_uname",
+static DEFINE_TEST(testsuite_uname,
 	.description = "test if trap to uname() works",
-	.func = testsuite_uname,
 	.config = {
 		[TC_UNAME_R] = TEST_UNAME,
 	},
-	.need_spawn = true,
-};
+	.need_spawn = true);
 
 static int testsuite_rootfs_fopen(const struct test *t)
 {
@@ -77,15 +75,12 @@ static int testsuite_rootfs_fopen(const struct test *t)
 
 	return EXIT_SUCCESS;
 }
-static const struct test stestsuite_rootfs_fopen = {
-	.name = "testsuite_rootfs_fopen",
+static DEFINE_TEST(testsuite_rootfs_fopen,
 	.description = "test if rootfs works - fopen()",
-	.func = testsuite_rootfs_fopen,
 	.config = {
 		[TC_ROOTFS] = TESTSUITE_ROOTFS "test-rootfs/",
 	},
-	.need_spawn = true,
-};
+	.need_spawn = true);
 
 static int testsuite_rootfs_open(const struct test *t)
 {
@@ -113,15 +108,12 @@ static int testsuite_rootfs_open(const struct test *t)
 
 	return EXIT_SUCCESS;
 }
-static const struct test stestsuite_rootfs_open = {
-	.name = "testsuite_rootfs_open",
+static DEFINE_TEST(testsuite_rootfs_open,
 	.description = "test if rootfs works - open()",
-	.func = testsuite_rootfs_open,
 	.config = {
 		[TC_ROOTFS] = TESTSUITE_ROOTFS "test-rootfs/",
 	},
-	.need_spawn = true,
-};
+	.need_spawn = true);
 
 static int testsuite_rootfs_stat_access(const struct test *t)
 {
@@ -139,15 +131,12 @@ static int testsuite_rootfs_stat_access(const struct test *t)
 
 	return EXIT_SUCCESS;
 }
-static const struct test stestsuite_rootfs_stat_access = {
-	.name = "testsuite_rootfs_stat_access",
+static DEFINE_TEST(testsuite_rootfs_stat_access,
 	.description = "test if rootfs works - stat() and access()",
-	.func = testsuite_rootfs_stat_access,
 	.config = {
 		[TC_ROOTFS] = TESTSUITE_ROOTFS "test-rootfs/",
 	},
-	.need_spawn = true,
-};
+	.need_spawn = true);
 
 static int testsuite_rootfs_opendir(const struct test *t)
 {
@@ -162,15 +151,12 @@ static int testsuite_rootfs_opendir(const struct test *t)
 	closedir(d);
 	return EXIT_SUCCESS;
 }
-static const struct test stestsuite_rootfs_opendir = {
-	.name = "testsuite_rootfs_opendir",
+static DEFINE_TEST(testsuite_rootfs_opendir,
 	.description = "test if rootfs works - opendir()",
-	.func = testsuite_rootfs_opendir,
 	.config = {
 		[TC_ROOTFS] = TESTSUITE_ROOTFS "test-rootfs/",
 	},
-	.need_spawn = true,
-};
+	.need_spawn = true);
 
 static const struct test *tests[] = {
 	&stestsuite_uname,
@@ -181,30 +167,4 @@ static const struct test *tests[] = {
 	NULL,
 };
 
-int main(int argc, char *argv[])
-{
-	const struct test *t;
-	int arg;
-	size_t i;
-
-	arg = test_init(argc, argv, tests);
-	if (arg == 0)
-		return 0;
-
-	if (arg < argc) {
-		t = test_find(tests, argv[arg]);
-		if (t == NULL) {
-			fprintf(stderr, "could not find test %s\n", argv[arg]);
-			exit(EXIT_FAILURE);
-		}
-
-		return test_run(t);
-	}
-
-	for (i = 0; tests[i] != NULL; i++) {
-		if (test_run(tests[i]) != 0)
-			exit(EXIT_FAILURE);
-	}
-
-	exit(EXIT_SUCCESS);
-}
+TESTSUITE_MAIN(tests);

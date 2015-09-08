@@ -1,7 +1,9 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
+ * Copyright (C) 2012  Lucas De Marchi <lucas.de.marchi@gmail.com>
+ * Copyright (C) 2013  Intel Corporation. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -29,7 +31,7 @@
 #include <ctype.h>
 
 #include "libkmod.h"
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 
 /*
  * Read one logical line from a configuration file.
@@ -88,37 +90,6 @@ char *getline_wrapped(FILE *fp, unsigned int *linenum)
 			}
 		}
 	}
-}
-
-/*
- * Replace dashes with underscores.
- * Dashes inside character range patterns (e.g. [0-9]) are left unchanged.
- */
-char *underscores(struct kmod_ctx *ctx, char *s)
-{
-	unsigned int i;
-
-	if (!s)
-		return NULL;
-
-	for (i = 0; s[i]; i++) {
-		switch (s[i]) {
-		case '-':
-			s[i] = '_';
-			break;
-
-		case ']':
-			INFO(ctx, "Unmatched bracket in %s\n", s);
-			break;
-
-		case '[':
-			i += strcspn(&s[i], "]");
-			if (!s[i])
-				INFO(ctx, "Unmatched bracket in %s\n", s);
-			break;
-		}
-	}
-	return s;
 }
 
 inline int alias_normalize(const char *alias, char buf[PATH_MAX], size_t *len)
@@ -339,13 +310,114 @@ char *path_make_absolute_cwd(const char *p)
 	return r;
 }
 
+static inline int is_dir(const char *path)
+{
+	struct stat st;
+
+	if (stat(path, &st) >= 0)
+		return S_ISDIR(st.st_mode);
+
+	return -errno;
+}
+
+int mkdir_p(const char *path, int len, mode_t mode)
+{
+	char *start, *end;
+
+	start = strndupa(path, len);
+	end = start + len;
+
+	/*
+	 * scan backwards, replacing '/' with '\0' while the component doesn't
+	 * exist
+	 */
+	for (;;) {
+		int r = is_dir(start);
+		if (r > 0) {
+			end += strlen(end);
+
+			if (end == start + len)
+				return 0;
+
+			/* end != start, since it would be caught on the first
+			 * iteration */
+			*end = '/';
+			break;
+		} else if (r == 0)
+			return -ENOTDIR;
+
+		if (end == start)
+			break;
+
+		*end = '\0';
+
+		/* Find the next component, backwards, discarding extra '/'*/
+		while (end > start && *end != '/')
+			end--;
+
+		while (end > start && *(end - 1) == '/')
+			end--;
+	}
+
+	for (; end < start + len;) {
+		if (mkdir(start, mode) < 0 && errno != EEXIST)
+			return -errno;
+
+		end += strlen(end);
+		*end = '/';
+	}
+
+	return 0;
+}
+
+int mkdir_parents(const char *path, mode_t mode)
+{
+	char *end = strrchr(path, '/');
+
+	/* no parent directories */
+	if (end == NULL)
+		return 0;
+
+	return mkdir_p(path, end - path, mode);
+}
+
+const struct kmod_ext kmod_exts[] = {
+	{".ko", sizeof(".ko") - 1},
+#ifdef ENABLE_ZLIB
+	{".ko.gz", sizeof(".ko.gz") - 1},
+#endif
+#ifdef ENABLE_XZ
+	{".ko.xz", sizeof(".ko.xz") - 1},
+#endif
+	{ }
+};
+
+bool path_ends_with_kmod_ext(const char *path, size_t len)
+{
+	const struct kmod_ext *eitr;
+
+	for (eitr = kmod_exts; eitr->ext != NULL; eitr++) {
+		if (len <= eitr->len)
+			continue;
+		if (streq(path + len - eitr->len, eitr->ext))
+			return true;
+	}
+
+	return false;
+}
+
 #define USEC_PER_SEC  1000000ULL
 #define NSEC_PER_USEC 1000ULL
+unsigned long long ts_usec(const struct timespec *ts)
+{
+	return (unsigned long long) ts->tv_sec * USEC_PER_SEC +
+	       (unsigned long long) ts->tv_nsec / NSEC_PER_USEC;
+}
+
 unsigned long long stat_mstamp(const struct stat *st)
 {
 #ifdef HAVE_STRUCT_STAT_ST_MTIM
-	return (unsigned long long) st->st_mtim.tv_sec * USEC_PER_SEC +
-	       (unsigned long long) st->st_mtim.tv_nsec / NSEC_PER_USEC;
+	return ts_usec(&st->st_mtim);
 #else
 	return (unsigned long long) st->st_mtime;
 #endif

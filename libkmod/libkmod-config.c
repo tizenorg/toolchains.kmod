@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -31,7 +31,7 @@
 #include <dirent.h>
 
 #include "libkmod.h"
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 
 struct kmod_alias {
 	char *name;
@@ -106,6 +106,37 @@ const char * const *kmod_softdep_get_post(const struct kmod_list *l, unsigned in
 	const struct kmod_softdep *dep = l->data;
 	*count = dep->n_post;
 	return dep->post;
+}
+
+/*
+ * Replace dashes with underscores.
+ * Dashes inside character range patterns (e.g. [0-9]) are left unchanged.
+ */
+static char *underscores(struct kmod_ctx *ctx, char *s)
+{
+	unsigned int i;
+
+	if (!s)
+		return NULL;
+
+	for (i = 0; s[i]; i++) {
+		switch (s[i]) {
+		case '-':
+			s[i] = '_';
+			break;
+
+		case ']':
+			INFO(ctx, "Unmatched bracket in %s\n", s);
+			break;
+
+		case '[':
+			i += strcspn(&s[i], "]");
+			if (!s[i])
+				INFO(ctx, "Unmatched bracket in %s\n", s);
+			break;
+		}
+	}
+	return s;
 }
 
 static int kmod_config_add_command(struct kmod_config *config,
@@ -487,7 +518,7 @@ static void kmod_config_free_softdep(struct kmod_config *config,
 static void kcmdline_parse_result(struct kmod_config *config, char *modname,
 						char *param, char *value)
 {
-	if (modname == NULL || param == NULL || value == NULL)
+	if (modname == NULL || param == NULL)
 		return;
 
 	DBG(config->ctx, "%s %s\n", modname, param);
@@ -536,8 +567,10 @@ static int kmod_config_parse_kcmdline(struct kmod_config *config)
 			modname = p + 1;
 			break;
 		case '.':
-			*p = '\0';
-			param = p + 1;
+			if (param == NULL) {
+				*p = '\0';
+				param = p + 1;
+			}
 			break;
 		case '=':
 			if (param != NULL)
@@ -568,7 +601,7 @@ static int kmod_config_parse(struct kmod_config *config, int fd,
 	fp = fdopen(fd, "r");
 	if (fp == NULL) {
 		err = -errno;
-		ERR(config->ctx, "fd %d: %m", fd);
+		ERR(config->ctx, "fd %d: %m\n", fd);
 		close(fd);
 		return err;
 	}
@@ -800,7 +833,7 @@ static int conf_files_list(struct kmod_ctx *ctx, struct kmod_list **list,
 	if (S_ISREG(st.st_mode)) {
 		conf_files_insert_sorted(ctx, list, path, NULL);
 		return 0;
-	} if (!S_ISDIR(st.st_mode)) {
+	} else if (!S_ISDIR(st.st_mode)) {
 		ERR(ctx, "unsupported file mode %s: %#x\n",
 							path, st.st_mode);
 		return -EINVAL;
@@ -944,6 +977,7 @@ static struct kmod_config_iter *kmod_config_iter_new(const struct kmod_ctx* ctx,
 							enum config_type type)
 {
 	struct kmod_config_iter *iter = calloc(1, sizeof(*iter));
+	const struct kmod_config *config = kmod_get_config(ctx);
 
 	if (iter == NULL)
 		return NULL;
@@ -952,31 +986,31 @@ static struct kmod_config_iter *kmod_config_iter_new(const struct kmod_ctx* ctx,
 
 	switch (type) {
 	case CONFIG_TYPE_BLACKLIST:
-		iter->list = kmod_get_blacklists(ctx);
+		iter->list = config->blacklists;
 		iter->get_key = kmod_blacklist_get_modname;
 		break;
 	case CONFIG_TYPE_INSTALL:
-		iter->list = kmod_get_install_commands(ctx);
+		iter->list = config->install_commands;
 		iter->get_key = kmod_command_get_modname;
 		iter->get_value = kmod_command_get_command;
 		break;
 	case CONFIG_TYPE_REMOVE:
-		iter->list = kmod_get_remove_commands(ctx);
+		iter->list = config->remove_commands;
 		iter->get_key = kmod_command_get_modname;
 		iter->get_value = kmod_command_get_command;
 		break;
 	case CONFIG_TYPE_ALIAS:
-		iter->list = kmod_get_aliases(ctx);
+		iter->list = config->aliases;
 		iter->get_key = kmod_alias_get_name;
 		iter->get_value = kmod_alias_get_modname;
 		break;
 	case CONFIG_TYPE_OPTION:
-		iter->list = kmod_get_options(ctx);
+		iter->list = config->options;
 		iter->get_key = kmod_option_get_modname;
 		iter->get_value = kmod_option_get_options;
 		break;
 	case CONFIG_TYPE_SOFTDEP:
-		iter->list = kmod_get_softdeps(ctx);
+		iter->list = config->softdeps;
 		iter->get_key = kmod_softdep_get_name;
 		iter->get_value = softdep_get_plain_softdep;
 		iter->intermediate = true;
@@ -1000,7 +1034,7 @@ static struct kmod_config_iter *kmod_config_iter_new(const struct kmod_ctx* ctx,
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the blacklists or %NULL on failure. Free it
+ * Returns: a new iterator over the blacklists or NULL on failure. Free it
  * with kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_blacklists(const struct kmod_ctx *ctx)
@@ -1020,7 +1054,7 @@ KMOD_EXPORT struct kmod_config_iter *kmod_config_get_blacklists(const struct kmo
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the install commands or %NULL on failure. Free
+ * Returns: a new iterator over the install commands or NULL on failure. Free
  * it with kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_install_commands(const struct kmod_ctx *ctx)
@@ -1040,7 +1074,7 @@ KMOD_EXPORT struct kmod_config_iter *kmod_config_get_install_commands(const stru
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the remove commands or %NULL on failure. Free
+ * Returns: a new iterator over the remove commands or NULL on failure. Free
  * it with kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_remove_commands(const struct kmod_ctx *ctx)
@@ -1060,7 +1094,7 @@ KMOD_EXPORT struct kmod_config_iter *kmod_config_get_remove_commands(const struc
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the aliases or %NULL on failure. Free it with
+ * Returns: a new iterator over the aliases or NULL on failure. Free it with
  * kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_aliases(const struct kmod_ctx *ctx)
@@ -1080,7 +1114,7 @@ KMOD_EXPORT struct kmod_config_iter *kmod_config_get_aliases(const struct kmod_c
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the options or %NULL on failure. Free it with
+ * Returns: a new iterator over the options or NULL on failure. Free it with
  * kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_options(const struct kmod_ctx *ctx)
@@ -1100,7 +1134,7 @@ KMOD_EXPORT struct kmod_config_iter *kmod_config_get_options(const struct kmod_c
  * kmod_config_iter_next(). At least one call to kmod_config_iter_next() must
  * be made to initialize the iterator and check if it's valid.
  *
- * Returns: a new iterator over the softdeps or %NULL on failure. Free it with
+ * Returns: a new iterator over the softdeps or NULL on failure. Free it with
  * kmod_config_iter_free_iter().
  */
 KMOD_EXPORT struct kmod_config_iter *kmod_config_get_softdeps(const struct kmod_ctx *ctx)

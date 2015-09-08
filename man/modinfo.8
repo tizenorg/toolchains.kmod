@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: modinfo
 .\"    Author: Jon Masters <jcm@jonmasters.org>
-.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 02/06/2012
+.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
+.\"      Date: 08/22/2013
 .\"    Manual: modinfo
 .\"    Source: kmod
 .\"  Language: English
 .\"
-.TH "MODINFO" "8" "02/06/2012" "kmod" "modinfo"
+.TH "MODINFO" "8" "08/22/2013" "kmod" "modinfo"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -38,7 +38,6 @@ modinfo \- Show information about a Linux Kernel module
 \fBmodinfo \-h\fR
 .SH "DESCRIPTION"
 .PP
-
 \fBmodinfo\fR
 extracts information from the Linux Kernel modules given on the command line\&. If the module name is not a filename, then the
 /lib/modules/\fIversion\fR
@@ -46,7 +45,6 @@ directory is searched, as is also done by
 \fBmodprobe\fR(8)
 when loading kernel modules\&.
 .PP
-
 \fBmodinfo\fR
 by default lists each attribute of the module in form
 \fIfieldname\fR
@@ -58,12 +56,12 @@ This version of
 can understand modules of any Linux Kernel architecture\&.
 .SH "OPTIONS"
 .PP
-\fB\-V\fR \fB\-\-version\fR
+\fB\-V\fR, \fB\-\-version\fR
 .RS 4
 Print the modinfo version\&.
 .RE
 .PP
-\fB\-F\fR \fB\-\-field\fR
+\fB\-F\fR, \fB\-\-field\fR
 .RS 4
 Only print this field value, one per line\&. This is most useful for scripts\&. Field names are case\-insensitive\&. Common fields (which may not be in every module) include
 author,
@@ -81,26 +79,35 @@ filename
 lists the filename of the module\&.
 .RE
 .PP
+\fB\-b \fR\fB\fIbasedir\fR\fR, \fB\-\-basedir \fR\fB\fIbasedir\fR\fR
+.RS 4
+Root directory for modules,
+/
+by default\&.
+.RE
+.PP
 \fB\-k \fR\fB\fIkernel\fR\fR
 .RS 4
 Provide information about a kernel other than the running one\&. This is particularly useful for distributions needing to extract information from a newly installed (but not yet running) set of kernel modules\&. For example, you wish to find which firmware files are needed by various modules in a new kernel for which you must make an initrd/initramfs image prior to booting\&.
 .RE
 .PP
-\fB\-0\fR \fB\-\-null\fR
+\fB\-0\fR, \fB\-\-null\fR
 .RS 4
 Use the ASCII zero character to separate field values, instead of a new line\&. This is useful for scripts, since a new line can theoretically appear inside a field\&.
 .RE
 .PP
-\fB\-a\fR \fB\-d\fR \fB\-l\fR \fB\-p\fR \fB\-n\fR
+\fB\-a\fR \fB\-\-author\fR, \fB\-d\fR \fB\-\-description\fR, \fB\-l\fR \fB\-\-license\fR, \fB\-p\fR \fB\-\-parameters\fR, \fB\-n\fR \fB\-\-filename\fR
 .RS 4
-These are shortcuts for
+These are shortcuts for the
+\fB\-\-field\fR
+flag\*(Aqs
 author,
 description,
-license\&.
+license,
 parm
 and
 filename
-respectively, to ease the transition from the old modutils
+arguments, to ease the transition from the old modutils
 \fBmodinfo\fR\&.
 .RE
 .SH "COPYRIGHT"
@@ -108,7 +115,6 @@ respectively, to ease the transition from the old modutils
 This manual page originally Copyright 2003, Rusty Russell, IBM Corporation\&. Maintained by Jon Masters and others\&.
 .SH "SEE ALSO"
 .PP
-
 \fBmodprobe\fR(8)
 .SH "AUTHORS"
 .PP

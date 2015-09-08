@@ -1,7 +1,7 @@
 /*
  * libkmod - interface to kernel module operations
  *
- * Copyright (C) 2011-2012  ProFUSION embedded systems
+ * Copyright (C) 2011-2013  ProFUSION embedded systems
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,8 +25,9 @@
 #include <errno.h>
 #include <fnmatch.h>
 #include <assert.h>
+#include <inttypes.h>
 
-#include "libkmod-private.h"
+#include "libkmod-internal.h"
 #include "libkmod-index.h"
 #include "macro.h"
 
@@ -431,9 +432,12 @@ void index_dump(struct index_file *in, int fd, const char *prefix)
 	struct index_node_f *root;
 	struct buffer buf;
 
+	root = index_readroot(in);
+	if (root == NULL)
+		return;
+
 	buf_init(&buf);
 	buf_pushchars(&buf, prefix);
-	root = index_readroot(in);
 	index_dump_node(root, &buf, fd);
 	buf_release(&buf);
 }
@@ -458,13 +462,12 @@ static char *index_search__node(struct index_node_f *node, const char *key, int 
 		i += j;
 
 		if (key[i] == '\0') {
-			if (node->values) {
-				value = strdup(node->values[0].value);
-				index_close(node);
-				return value;
-			} else {
-				return NULL;
-			}
+			value = node->values != NULL
+				? strdup(node->values[0].value)
+				: NULL;
+
+			index_close(node);
+			return value;
 		}
 
 		child = index_readchild(node, key[i]);
@@ -485,6 +488,7 @@ static char *index_search__node(struct index_node_f *node, const char *key, int 
  */
 char *index_search(struct index_file *in, const char *key)
 {
+// FIXME: return value by reference instead of strdup
 	struct index_node_f *root;
 	char *value;
 
@@ -674,7 +678,7 @@ static inline uint32_t read_long_mm(void **p)
 	uint32_t v;
 
 	/* addr may be unalined to uint32_t */
-	memcpy(&v, addr, sizeof(uint32_t));
+	v = get_unaligned((uint32_t *) addr);
 
 	*p = addr + sizeof(uint32_t);
 	return ntohl(v);
@@ -771,10 +775,9 @@ static void index_mm_free_node(struct index_mm_node *node)
 }
 
 struct index_mm *index_mm_open(struct kmod_ctx *ctx, const char *filename,
-				bool populate, unsigned long long *stamp)
+						unsigned long long *stamp)
 {
 	int fd;
-	int flags;
 	struct stat st;
 	struct index_mm *idx;
 	struct {
@@ -793,20 +796,19 @@ struct index_mm *index_mm_open(struct kmod_ctx *ctx, const char *filename,
 	}
 
 	if ((fd = open(filename, O_RDONLY|O_CLOEXEC)) < 0) {
-		ERR(ctx, "open(%s, O_RDONLY|O_CLOEXEC): %m\n", filename);
+		DBG(ctx, "open(%s, O_RDONLY|O_CLOEXEC): %m\n", filename);
 		goto fail_open;
 	}
 
 	fstat(fd, &st);
-	flags = MAP_PRIVATE;
-	if (populate)
-		flags |= MAP_POPULATE;
+	if ((size_t) st.st_size < sizeof(hdr))
+		goto fail_nommap;
 
-	if ((idx->mm = mmap(0, st.st_size, PROT_READ, flags, fd, 0))
+	if ((idx->mm = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0))
 							== MAP_FAILED) {
-		ERR(ctx, "mmap(0, %zd, PROT_READ, %d, %d, 0): %m\n",
-		    (size_t)st.st_size, flags, fd);
-		goto fail;
+		ERR(ctx, "mmap(NULL, %"PRIu64", PROT_READ, %d, MAP_PRIVATE, 0): %m\n",
+							st.st_size, fd);
+		goto fail_nommap;
 	}
 
 	p = idx->mm;
@@ -836,9 +838,9 @@ struct index_mm *index_mm_open(struct kmod_ctx *ctx, const char *filename,
 	return idx;
 
 fail:
+	munmap(idx->mm, st.st_size);
+fail_nommap:
 	close(fd);
-	if (idx->mm != MAP_FAILED)
-		munmap(idx->mm, st.st_size);
 fail_open:
 	free(idx);
 	return NULL;
@@ -903,9 +905,12 @@ void index_mm_dump(struct index_mm *idx, int fd, const char *prefix)
 	struct index_mm_node *root;
 	struct buffer buf;
 
+	root = index_mm_readroot(idx);
+	if (root == NULL)
+		return;
+
 	buf_init(&buf);
 	buf_pushchars(&buf, prefix);
-	root = index_mm_readroot(idx);
 	index_mm_dump_node(root, &buf, fd);
 	buf_release(&buf);
 }
@@ -931,13 +936,12 @@ static char *index_mm_search_node(struct index_mm_node *node, const char *key,
 		i += j;
 
 		if (key[i] == '\0') {
-			if (node->values.len > 0) {
-				value = strdup(node->values.values[0].value);
-				index_mm_free_node(node);
-				return value;
-			} else {
-				return NULL;
-			}
+			value = node->values.len > 0
+				? strdup(node->values.values[0].value)
+				: NULL;
+
+			index_mm_free_node(node);
+			return value;
 		}
 
 		child = index_mm_readchild(node, key[i]);
@@ -958,6 +962,7 @@ static char *index_mm_search_node(struct index_mm_node *node, const char *key,
  */
 char *index_mm_search(struct index_mm *idx, const char *key)
 {
+// FIXME: return value by reference instead of strdup
 	struct index_mm_node *root;
 	char *value;
 
