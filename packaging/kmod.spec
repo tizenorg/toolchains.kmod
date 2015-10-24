@@ -4,7 +4,7 @@ Release:        1
 Summary:        Linux kernel module management utilities
 
 Group:          System Environment/Kernel
-License:        GPLv2+
+License:        GPL-2.0 and LGPL-2.1
 URL:            http://git.kernel.org/?p=utils/kernel/kmod/kmod.git;a=summary
 Source0:        ftp://ftp.kernel.org/pub/linux/utils/kernel/kmod/%{name}-%{version}.tar.xz
 Source1:        weak-modules
@@ -15,7 +15,6 @@ BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires:  chrpath
 BuildRequires:  zlib-devel
 BuildRequires:  xz-devel
-BuildRequires:  libxslt
 
 Requires: %{name}-libs%{?_isa} = %{version}-%{release}
 
@@ -31,7 +30,7 @@ examples of loaded and unloaded modules.
 
 %package libs
 Summary:        Libraries to handle kernel module loading and unloading
-License:        LGPLv2+
+License:        LGPL-2.1
 Group:          System Environment/Libraries
 
 %description libs
@@ -55,14 +54,12 @@ cp %{SOURCE1001} .
 export V=1
 %configure \
         --with-zlib \
-        --with-xz
-make %{?_smp_mflags}
+        --with-xz \
+	--disable-manpages
+make %{?_smp_mflags} CFLAGS+="-fPIE" LDFLAGS+="-pie"
 
 %install
 make install DESTDIR=$RPM_BUILD_ROOT
-pushd $RPM_BUILD_ROOT/%{_mandir}/man5
-ln -s modprobe.d.5.gz modprobe.conf.5.gz
-popd
 
 rm -rf $RPM_BUILD_ROOT%{_libdir}/*.la
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
@@ -78,7 +75,15 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/depmod.d
 mkdir -p $RPM_BUILD_ROOT%{_prefix}/lib/modprobe.d
 
 mkdir -p $RPM_BUILD_ROOT/sbin
-ln -sf  ..%{_sbindir}/depmod $RPM_BUILD_ROOT/sbin/depmod
+# When Kernel module is built, reference point of depmod is /sbin/depmod.
+# Since depmod is created into /usr/sbin/ with kmod, it can't use depmod from /sbin/
+# To prevent like this behavior, add the symbolic link.
+# (The below symbolic link needs to build the kernel modules.)
+ln -sf ..%{_sbindir}/depmod $RPM_BUILD_ROOT/sbin/depmod
+ln -sf ..%{_sbindir}/insmod $RPM_BUILD_ROOT/sbin/insmod
+ln -sf ..%{_sbindir}/rmmod $RPM_BUILD_ROOT/sbin/rmmod
+ln -sf ..%{_sbindir}/modinfo $RPM_BUILD_ROOT/sbin/modinfo
+ln -sf ..%{_sbindir}/modprobe $RPM_BUILD_ROOT/sbin/modprobe
 install -m 755 %{SOURCE1} $RPM_BUILD_ROOT%{_sbindir}/weak-modules
 
 mkdir -p $RPM_BUILD_ROOT%{_datadir}/license
@@ -106,7 +111,12 @@ cat libkmod/COPYING > $RPM_BUILD_ROOT%{_datadir}/license/kmod-libs
 %{_sbindir}/depmod
 %{_sbindir}/weak-modules
 %{_datadir}/bash-completion/completions/kmod
+#To use symbolic link, the below patch is added.
 /sbin/depmod
+/sbin/insmod
+/sbin/rmmod
+/sbin/modinfo
+/sbin/modprobe
 %manifest kmod.manifest
 
 %files libs
